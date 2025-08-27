@@ -133,11 +133,11 @@ function useThree(containerRef, sceneData){
     renderer.setSize(width,height); renderer.setPixelRatio(devicePixelRatio);
     el.innerHTML = ""; el.appendChild(renderer.domElement);
 
-    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0d11);
-    const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000); camera.position.set(12,10,14);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0d11);
+  const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000); camera.up.set(0,0,1); camera.position.set(12,10,14);
     const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
     scene.add(new THREE.AmbientLight(0xffffff, .7)); const dl = new THREE.DirectionalLight(0xffffff,.7); dl.position.set(10,12,8); scene.add(dl);
-    const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); scene.add(grid); scene.add(new THREE.AxesHelper(6));
+  const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); grid.rotateX(Math.PI/2); scene.add(grid); scene.add(new THREE.AxesHelper(6));
     // Axis labels (X,Y,Z)
     function makeAxisLabel(text, color){
       const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d');
@@ -348,10 +348,7 @@ function MongeSVG({scene, light, options}){
 function App(){
   const [lang,setLang]=useState('pt'); const t=I18N[lang];
   const [scene, setScene]=useState(()=>{ try{ if(location.hash.startsWith('#data=')){const payload=decodeURIComponent(location.hash.slice(6)); const json=LZString.decompressFromEncodedURIComponent(payload); if(json){return JSON.parse(json)}} }catch(e){}
-    return { points:[ {id:'A',x:0,y:4,z:4,color:'#ffd166',size:3}, {id:'B',x:6,y:4,z:4,color:'#ffd166',size:3}, {id:'V',x:4,y:12,z:4,color:'#ef476f',size:3} ],
-             segments:[{id:'s1',a:'A',b:'V',color:'#66e0a3',width:2},{id:'s2',a:'B',b:'V',color:'#66e0a3',width:2}],
-             faces:[{id:'f1',verts:['A','B','V'],color:'#5ab3ff',opacity:0.25}],
-             lines:[], planes:[], semiplanes:[] };
+    return { points:[], segments:[], faces:[], lines:[], planes:[], semiplanes:[] };
   });
   const [light,setLight]=useState({x:-1,y:-1,z:-1});
   const [opts,setOpts]=useState({grid:true,axis:true,bw:false,thick:true});
