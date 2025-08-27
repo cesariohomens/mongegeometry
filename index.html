@@ -138,6 +138,23 @@ function useThree(containerRef, sceneData){
     const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
     scene.add(new THREE.AmbientLight(0xffffff, .7)); const dl = new THREE.DirectionalLight(0xffffff,.7); dl.position.set(10,12,8); scene.add(dl);
     const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); scene.add(grid); scene.add(new THREE.AxesHelper(6));
+    // Axis labels (X,Y,Z)
+    function makeAxisLabel(text, color){
+      const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d');
+      const font='Bold 64px system-ui,Segoe UI,Roboto,Ubuntu,Arial'; ctx.font=font; const metrics=ctx.measureText(text);
+      const pad=24; canvas.width=Math.max(64, Math.ceil(metrics.width+pad*2)); canvas.height=128;
+      ctx.font=font; ctx.textAlign='center'; ctx.textBaseline='middle';
+      // outline for contrast
+      ctx.lineWidth=10; ctx.strokeStyle='#000000c0'; ctx.strokeText(text, canvas.width/2, canvas.height/2);
+      ctx.fillStyle=color; ctx.fillText(text, canvas.width/2, canvas.height/2);
+      const tex=new THREE.CanvasTexture(canvas); tex.minFilter=THREE.LinearFilter; tex.anisotropy=2;
+      const mat=new THREE.SpriteMaterial({map:tex, transparent:true}); const spr=new THREE.Sprite(mat);
+      spr.scale.set(1.6, 0.9, 1); // world units
+      return spr;
+    }
+    const lx=makeAxisLabel('X', '#ff5555'); lx.position.set(7.2,0,0); scene.add(lx);
+    const ly=makeAxisLabel('Y', '#22cc66'); ly.position.set(0,7.2,0); scene.add(ly);
+    const lz=makeAxisLabel('Z', '#55aaff'); lz.position.set(0,0,7.2); scene.add(lz);
 
     // Points
     const sph = new THREE.SphereGeometry(0.12, 16, 16);
