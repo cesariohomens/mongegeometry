@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GD — Editor Monge + 3D (React)</title>
+  <!-- React 18 + ReactDOM 18 + Babel (in-browser JSX) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Three.js + OrbitControls -->
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- jsPDF -->
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- LZ-String for sharable links -->
+  <script src="https://unpkg.com/lz-string@1.4.4/libs/lz-string.min.js"></script>
+  <style>
+    :root{--bg:#0b0d10;--panel:#12161b;--ink:#e7edf6;--ink2:#a9b3c4;--acc:#64b5f6;--ok:#43a047;--warn:#f9a825;--err:#ef5350}
+    html,body,#root{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.3 system-ui,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .app{display:grid;grid-template-columns:360px 1fr;gap:14px;height:100%}
+    .left{background:var(--panel);padding:12px;overflow:auto}
+    .right{display:grid;grid-template-rows:auto 1fr;gap:10px;min-width:0}
+    .toolbar{background:var(--panel);padding:8px;display:flex;gap:8px;align-items:center}
+    .views{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+    .card{background:var(--panel);border:1px solid #1e242c;border-radius:12px;padding:10px;min-height:0}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+    input,select,button,textarea{background:#0f141a;border:1px solid #2a3340;color:var(--ink);padding:6px 8px;border-radius:8px}
+    input[type="number"]{width:80px}
+    input[type="color"]{padding:0;border:none;background:transparent}
+    button{cursor:pointer}
+    button.primary{background:var(--acc);color:#04223a;border:none}
+    button.good{background:var(--ok);border:none}
+    button.warn{background:var(--warn);border:none;color:#14130a}
+    .small{font-size:12px;color:var(--ink2)}
+    .pill{padding:2px 8px;border-radius:999px;background:#0f141a;border:1px solid #2a3340}
+    .svgwrap{height:100%}
+    svg{width:100%;height:100%;background:#0a0d11;border-radius:10px}
+    .thumbs{display:flex;gap:8px;flex-wrap:wrap}
+    .thumbs img{width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #233040}
+    .lang{margin-left:auto}
+    .linkbox{word-break:break-all;background:#081018;border:1px dashed #2f3b4a;padding:6px;border-radius:8px}
+    .twoCol{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .muted{opacity:.8}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const {useState, useRef, useEffect} = React;
+
+// ---------------- I18N -----------------
+const I18N = {
+  en: { app:'Monge & 3D Geometry Studio', language:'Language',
+    point:'Point', addPoint:'Add Point', id:'ID', x:'x', y:'y', z:'z', color:'Color', size:'Size',
+    segment:'Segment', addSegment:'Add Segment', p1:'Point A', p2:'Point B', width:'Width',
+    face:'Face (polygon)', addFace:'Add Face', vertices:'Vertices (IDs, comma-separated)', opacity:'Opacity',
+    line:'Line', addLine:'Add Line', byTwoPts:'by 2 Points', byPointDir:'by Point + Direction', dir:'Direction',
+    plane:'Plane', addPlane:'Add Plane', by3Pts:'by 3 Points', byPointNormal:'by Point + Normal', normal:'Normal',
+    semiplane:'Semiplane (Half-plane)', addSemiplane:'Add Semiplane', basePlane:'Base Plane (ID)', side:'Side (+ / -)',
+    light:'Light direction', lx:'Lx', ly:'Ly', lz:'Lz',
+    monge:'Monge (V & H)', view3d:'3D View', exportPDF:'Export PDF', bw:'B&W', thick:'Thick/Thin', includeSnaps:'Include 3D snapshots',
+    snap:'Take 3D Snapshot', share:'Share Link', link:'Sharable Link', copied:'Copied!', load:'Load from URL', clear:'Clear Scene', grid:'Grid', axis:'Axis'
+  },
+  pt: { app:'Estúdio de Geometria Monge & 3D', language:'Língua',
+    point:'Ponto', addPoint:'Adicionar Ponto', id:'ID', x:'x', y:'y', z:'z', color:'Cor', size:'Tamanho',
+    segment:'Segmento', addSegment:'Adicionar Segmento', p1:'Ponto A', p2:'Ponto B', width:'Espessura',
+    face:'Face (polígono)', addFace:'Adicionar Face', vertices:'Vértices (IDs separados por vírgula)', opacity:'Opacidade',
+    line:'Reta', addLine:'Adicionar Reta', byTwoPts:'por 2 Pontos', byPointDir:'por Ponto + Direção', dir:'Direção',
+    plane:'Plano', addPlane:'Adicionar Plano', by3Pts:'por 3 Pontos', byPointNormal:'por Ponto + Normal', normal:'Normal',
+    semiplane:'Semiplano (meio-plano)', addSemiplane:'Adicionar Semiplano', basePlane:'Plano base (ID)', side:'Lado (+ / -)',
+    light:'Direção da luz', lx:'Lx', ly:'Ly', lz:'Lz',
+    monge:'Monge (V & H)', view3d:'Vista 3D', exportPDF:'Exportar PDF', bw:'P&B', thick:'Traços e finos', includeSnaps:'Incluir fotos 3D',
+    snap:'Tirar foto 3D', share:'Partilhar Link', link:'Ligação partilhável', copied:'Copiado!', load:'Carregar do URL', clear:'Limpar Cena', grid:'Grelha', axis:'Eixos'
+  },
+  es: { app:'Estudio de Geometría Monge y 3D', language:'Idioma',
+    point:'Punto', addPoint:'Añadir Punto', id:'ID', x:'x', y:'y', z:'z', color:'Color', size:'Tamaño',
+    segment:'Segmento', addSegment:'Añadir Segmento', p1:'Punto A', p2:'Punto B', width:'Grosor',
+    face:'Cara (polígono)', addFace:'Añadir Cara', vertices:'Vértices (IDs separados por comas)', opacity:'Opacidad',
+    line:'Recta', addLine:'Añadir Recta', byTwoPts:'por 2 Puntos', byPointDir:'por Punto + Dirección', dir:'Dirección',
+    plane:'Plano', addPlane:'Añadir Plano', by3Pts:'por 3 Puntos', byPointNormal:'por Punto + Normal', normal:'Normal',
+    semiplane:'Semiplano (medio-plano)', addSemiplane:'Añadir Semiplano', basePlane:'Plano base (ID)', side:'Lado (+ / -)',
+    light:'Dirección de luz', lx:'Lx', ly:'Ly', lz:'Lz', monge:'Monge (V & H)', view3d:'Vista 3D', exportPDF:'Exportar PDF', bw:'B/N', thick:'Trazo fino/grueso', includeSnaps:'Incluir fotos 3D', snap:'Foto 3D', share:'Compartir Enlace', link:'Enlace para compartir', copied:'¡Copiado!', load:'Cargar desde URL', clear:'Limpiar Escena', grid:'Cuadrícula', axis:'Ejes'
+  },
+  it: { app:'Studio di Geometria Monge & 3D', language:'Lingua',
+    point:'Punto', addPoint:'Aggiungi Punto', id:'ID', x:'x', y:'y', z:'z', color:'Colore', size:'Dimensione',
+    segment:'Segmento', addSegment:'Aggiungi Segmento', p1:'Punto A', p2:'Punto B', width:'Spessore',
+    face:'Faccia (poligono)', addFace:'Aggiungi Faccia', vertices:'Vertici (ID separati da virgole)', opacity:'Opacità',
+    line:'Retta', addLine:'Aggiungi Retta', byTwoPts:'con 2 Punti', byPointDir:'con Punto + Direzione', dir:'Direzione',
+    plane:'Piano', addPlane:'Aggiungi Piano', by3Pts:'con 3 Punti', byPointNormal:'con Punto + Normale', normal:'Normale',
+    semiplane:'Semipiano', addSemiplane:'Aggiungi Semipiano', basePlane:'Piano base (ID)', side:'Lato (+ / -)',
+    light:'Direzione della luce', lx:'Lx', ly:'Ly', lz:'Lz', monge:'Monge (V & H)', view3d:'Vista 3D', exportPDF:'Esporta PDF', bw:'B/N', thick:'Tratti grossi/sottili', includeSnaps:'Includi foto 3D', snap:'Scatta foto 3D', share:'Condividi Link', link:'Link condivisibile', copied:'Copiato!', load:'Carica da URL', clear:'Pulisci Scena', grid:'Griglia', axis:'Assi'
+  },
+  fr: { app:'Studio de Géométrie Monge & 3D', language:'Langue',
+    point:'Point', addPoint:'Ajouter Point', id:'ID', x:'x', y:'y', z:'z', color:'Couleur', size:'Taille',
+    segment:'Segment', addSegment:'Ajouter Segment', p1:'Point A', p2:'Point B', width:'Épaisseur',
+    face:'Face (polygone)', addFace:'Ajouter Face', vertices:'Sommets (IDs séparés par virgules)', opacity:'Opacité',
+    line:'Droite', addLine:'Ajouter Droite', byTwoPts:'par 2 Points', byPointDir:'par Point + Direction', dir:'Direction',
+    plane:'Plan', addPlane:'Ajouter Plan', by3Pts:'par 3 Points', byPointNormal:'par Point + Normale', normal:'Normale',
+    semiplane:'Demi-plan', addSemiplane:'Ajouter Demi-plan', basePlane:'Plan de base (ID)', side:'Côté (+ / -)',
+    light:'Direction de la lumière', lx:'Lx', ly:'Ly', lz:'Lz', monge:'Monge (V & H)', view3d:'Vue 3D', exportPDF:'Exporter PDF', bw:'N&B', thick:'Traits forts/fins', includeSnaps:'Inclure photos 3D', snap:'Photo 3D', share:'Partager Lien', link:'Lien partageable', copied:'Copié !', load:'Charger depuis URL', clear:'Vider Scène', grid:'Grille', axis:'Axes'
+  },
+  de: { app:'Monge- & 3D-Geometriestudio', language:'Sprache',
+    point:'Punkt', addPoint:'Punkt hinzufügen', id:'ID', x:'x', y:'y', z:'z', color:'Farbe', size:'Größe',
+    segment:'Strecke', addSegment:'Strecke hinzufügen', p1:'Punkt A', p2:'Punkt B', width:'Linienstärke',
+    face:'Fläche (Polygon)', addFace:'Fläche hinzufügen', vertices:'Ecken (IDs, durch Komma getrennt)', opacity:'Deckkraft',
+    line:'Gerade', addLine:'Gerade hinzufügen', byTwoPts:'mit 2 Punkten', byPointDir:'mit Punkt + Richtung', dir:'Richtung',
+    plane:'Ebene', addPlane:'Ebene hinzufügen', by3Pts:'mit 3 Punkten', byPointNormal:'mit Punkt + Normalenvektor', normal:'Normalenvektor',
+    semiplane:'Halbebene', addSemiplane:'Halbebene hinzufügen', basePlane:'Basisebene (ID)', side:'Seite (+ / -)',
+    light:'Lichtrichtung', lx:'Lx', ly:'Ly', lz:'Lz', monge:'Monge (V & H)', view3d:'3D-Ansicht', exportPDF:'PDF exportieren', bw:'S/W', thick:'Stark/Fein', includeSnaps:'3D-Fotos einfügen', snap:'3D-Foto', share:'Link teilen', link:'Teilbarer Link', copied:'Kopiert!', load:'Aus URL laden', clear:'Szene leeren', grid:'Gitter', axis:'Achsen'
+  }
+};
+
+// --------- Utilities ----------
+const uid = () => Math.random().toString(36).slice(2,8);
+function clone(obj){return JSON.parse(JSON.stringify(obj));}
+
+// Projection helpers (Monge)
+function projV(p){return {x:p.x, y:p.z}} // alçado (x,z)
+function projH(p){return {x:p.x, y:-p.y}} // planta (x,-y)
+
+// Shadow of point along light L on H (z=0) and V (y=0)
+function shadowOnH(p,L){const t=p.z/(-L.z||-1e-6);return {x:p.x+t*L.x, y:-(p.y+t*L.y)}}
+function shadowOnV(p,L){const t=p.y/(-L.y||-1e-6);return {x:p.x+t*L.x, y:p.z+t*L.z}}
+
+// ------------- 3D Scene (Three.js) ---------------
+function useThree(containerRef, sceneData){
+  useEffect(()=>{
+    const el = containerRef.current; if(!el) return;
+    const width = el.clientWidth, height = el.clientHeight;
+    const renderer = new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+    renderer.setSize(width,height); renderer.setPixelRatio(devicePixelRatio);
+    el.innerHTML = ""; el.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0d11);
+    const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000); camera.position.set(12,10,14);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+    scene.add(new THREE.AmbientLight(0xffffff, .7)); const dl = new THREE.DirectionalLight(0xffffff,.7); dl.position.set(10,12,8); scene.add(dl);
+    const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); scene.add(grid); scene.add(new THREE.AxesHelper(6));
+
+    // Points
+    const sph = new THREE.SphereGeometry(0.12, 16, 16);
+    sceneData.points.forEach(pt=>{const m=new THREE.MeshStandardMaterial({color:pt.color||'#88ccff'});const s=new THREE.Mesh(sph,m);s.position.set(pt.x,pt.y,pt.z);scene.add(s)});
+
+    // Segments
+    sceneData.segments.forEach(seg=>{const a=sceneData.points.find(p=>p.id===seg.a), b=sceneData.points.find(p=>p.id===seg.b); if(!a||!b) return; const mat=new THREE.LineBasicMaterial({color:seg.color||'#66e0a3'}); const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x,a.y,a.z),new THREE.Vector3(b.x,b.y,b.z)]); scene.add(new THREE.Line(geo,mat));});
+
+    // Lines (infinite visual as long segment)
+    sceneData.lines.forEach(L=>{let p0,v; if(L.type==='two'){const a=sceneData.points.find(p=>p.id===L.a), b=sceneData.points.find(p=>p.id===L.b); if(!a||!b) return; p0=a; v={x:b.x-a.x,y:b.y-a.y,z:b.z-a.z};} else {const a=sceneData.points.find(p=>p.id===L.p); if(!a) return; p0=a; v={x:L.vx,y:L.vy,z:L.vz};}
+      const S=100; const A=new THREE.Vector3(p0.x-S*v.x,p0.y-S*v.y,p0.z-S*v.z), B=new THREE.Vector3(p0.x+S*v.x,p0.y+S*v.y,p0.z+S*v.z);
+      const mat=new THREE.LineDashedMaterial({color:L.color||'#f6c', dashSize:2, gapSize:1}); const geo=new THREE.BufferGeometry().setFromPoints([A,B]); const line=new THREE.Line(geo,mat); line.computeLineDistances(); scene.add(line);
+    });
+
+    // Planes & semiplanes (patch)
+    function planeFromDef(pl){ if(pl.type==='3pts'){const A=sceneData.points.find(p=>p.id===pl.a),B=sceneData.points.find(p=>p.id===pl.b),C=sceneData.points.find(p=>p.id===pl.c); if(!A||!B||!C) return null; const u=new THREE.Vector3(B.x-A.x,B.y-A.y,B.z-A.z); const v=new THREE.Vector3(C.x-A.x,C.y-A.y,C.z-A.z); const n=new THREE.Vector3().crossVectors(u,v).normalize(); return {p:new THREE.Vector3(A.x,A.y,A.z), n}; } else {const A=sceneData.points.find(p=>p.id===pl.p); if(!A) return null; const n=new THREE.Vector3(pl.nx,pl.ny,pl.nz).normalize(); return {p:new THREE.Vector3(A.x,A.y,A.z), n}; } }
+    function buildPatch(base, color, opacity, half=false){
+      if(!base) return;
+      const n=base.n;
+      let u=new THREE.Vector3(1,0,0);
+      if(Math.abs(n.dot(u))>.9) u.set(0,1,0);
+      u=new THREE.Vector3().crossVectors(n,u).normalize();
+      const v=new THREE.Vector3().crossVectors(n,u).normalize();
+      const S=half?30:30; const hw=half?15:30;
+      const coords=[];
+      function pushQuad(a,b,c,d){
+        coords.push(
+          a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z,
+          a.x,a.y,a.z, c.x,c.y,c.z, d.x,d.y,d.z
+        );
+      }
+      const P=base.p;
+      if(half){
+        // half-plane: only one side (u>=0)
+        const a=P.clone().addScaledVector(u,0).addScaledVector(v,-hw);
+        const b=P.clone().addScaledVector(u,S).addScaledVector(v,-hw);
+        const c=P.clone().addScaledVector(u,S).addScaledVector(v, hw);
+        const d=P.clone().addScaledVector(u,0).addScaledVector(v, hw);
+        pushQuad(a,b,c,d);
+      } else {
+        const a=P.clone().addScaledVector(u,-hw).addScaledVector(v,-hw);
+        const b=P.clone().addScaledVector(u, hw).addScaledVector(v,-hw);
+        const c=P.clone().addScaledVector(u, hw).addScaledVector(v, hw);
+        const d=P.clone().addScaledVector(u,-hw).addScaledVector(v, hw);
+        pushQuad(a,b,c,d);
+      }
+      if(coords.length){
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(coords,3));
+        geo.computeVertexNormals();
+        const mat=new THREE.MeshStandardMaterial({color, opacity:(opacity??0.25), transparent:true, side:THREE.DoubleSide});
+        const mesh=new THREE.Mesh(geo,mat);
+        scene.add(mesh);
+      }
+    }
+
+    sceneData.planes.forEach(pl=>{const base=planeFromDef(pl); if(!base) return; buildPatch(base, pl.color||'#5ab3ff', pl.opacity);});
+    sceneData.semiplanes.forEach(sp=>{const pl=sceneData.planes.find(p=>p.id===sp.plane); const base=planeFromDef(pl); if(!base) return; buildPatch(base, sp.color||'#ffaa00', sp.opacity, true)});
+
+    let raf; const tick=()=>{controls.update(); renderer.render(scene,camera); raf=requestAnimationFrame(tick)}; tick();
+    const onResize=()=>{const w=el.clientWidth,h=el.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();};
+    window.addEventListener('resize', onResize);
+    return ()=>{cancelAnimationFrame(raf); window.removeEventListener('resize',onResize); el.innerHTML=""}
+  },[containerRef, JSON.stringify(sceneData)]);
+}
+
+// -------- Monge SVG renderer (inclui retas/planos/semiplanos) --------
+function MongeSVG({scene, light, options}){
+  const svgRef = useRef(null);
+  const {grid=true, axis=true, bw=false, thick=false} = options||{};
+
+  const draw = ()=>{
+    const svg = svgRef.current; if(!svg) return; const W=svg.clientWidth||900,H=svg.clientHeight||640; const pad=30, midY=H/2;
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const Xmin=-40,Xmax=40,Ymin=-25,Ymax=25;
+    const sx = x=> (x-Xmin)/(Xmax-Xmin)*(W-2*pad)+pad;
+    const syV = z=> midY - ((z-Ymin)/(Ymax-Ymin)*((H/2-pad)));
+    const syH = y=> midY + ((-y - Ymin)/(Ymax-Ymin)*((H/2-pad)));
+    const col = c=> bw? '#111': c; const strokeThin = thick?1.2:1.0, strokeThick = thick?2.2:1.2;
+
+    const NS='http://www.w3.org/2000/svg';
+    function line(x1,y1,x2,y2,color='#9aa',w=1.2,dash=null){const l=document.createElementNS(NS,'line');l.setAttribute('x1',x1);l.setAttribute('y1',y1);l.setAttribute('x2',x2);l.setAttribute('y2',y2);l.setAttribute('stroke',col(color));l.setAttribute('stroke-width',w);if(dash)l.setAttribute('stroke-dasharray',dash);l.setAttribute('vector-effect','non-scaling-stroke');svg.appendChild(l)}
+    function circle(cx,cy,r,color='#fff'){const c=document.createElementNS(NS,'circle');c.setAttribute('cx',cx);c.setAttribute('cy',cy);c.setAttribute('r',r);c.setAttribute('fill',col(color));svg.appendChild(c)}
+    function poly(points,color='#5af',fill=null,w=1.2,dash=null){const p=document.createElementNS(NS,'polyline');p.setAttribute('points',points.map(([x,y])=>`${x},${y}`).join(' '));p.setAttribute('stroke',col(color));p.setAttribute('fill',fill?(bw?'#ddd':fill):'none');p.setAttribute('stroke-width',w);if(dash)p.setAttribute('stroke-dasharray',dash);p.setAttribute('vector-effect','non-scaling-stroke');svg.appendChild(p)}
+    function text(x,y,str,anchor='start'){const t=document.createElementNS(NS,'text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('fill',bw?'#111':'#cfd8e3');t.setAttribute('font-size','12');t.setAttribute('font-family','system-ui,Segoe UI,Roboto,Ubuntu,Arial');t.setAttribute('text-anchor',anchor);t.textContent=str;svg.appendChild(t)}
+
+    // Grid
+    if(grid){for(let x=Math.ceil(Xmin);x<=Xmax;x++){const X=sx(x);line(X,pad,X,H-pad,'#1b222c',0.5)} for(let y=Math.ceil(Ymin);y<=Ymax;y++){const Yv=syV(y),Yh=syH(-y);line(pad,Yv,W-pad,Yv,'#1b222c',0.5);line(pad,Yh,W-pad,Yh,'#1b222c',0.5)}}
+    if(axis){line(pad,midY,W-pad,midY,'#64748b',strokeThick);text(pad,midY-6,'x')}
+
+    // Helper: draw infinite 2D line from ax+by+c=0 on a given rectangle
+    function draw2DLine(ax,bx,cx,color,w){ // returns endpoints
+      // Compute intersections with rectangle [Xmin,Xmax]x[Ymin,Ymax]
+      function interX(x){const y=-(ax*x+cx)/(bx||1e-6);return [sx(x), thisY(y)]}
+      function interY(y){const x=-(bx*y+cx)/(ax||1e-6);return [sx(x), thisY(y)]}
+      // thisY will be swapped (syV or syH) externally by binding
+    }
+
+    // ---- Faces (existing polygons) ----
+    scene.faces.forEach(face=>{
+      const pts = face.verts.map(id=>scene.points.find(p=>p.id===id)).filter(Boolean); if(pts.length<3) return;
+      const polyV = pts.map(p=> [sx(p.x), syV(p.z)]); poly([...polyV, polyV[0]], face.color||'#5588ff', (face.opacity??0.3)>0? (face.color||'#5588ff'):null, strokeThin);
+      const polyH = pts.map(p=> [sx(p.x), syH(p.y)]); poly([...polyH, polyH[0]], face.color||'#5588ff', (face.opacity??0.3)>0? (face.color||'#5588ff'):null, strokeThin);
+      const L=light; const shV = pts.map(p=> shadowOnV(p,L)); poly([...shV.map(q=>[sx(q.x), syV(q.y)]), [sx(shV[0].x), syV(shV[0].y)]], '#9aa', bw?null:'#0000', strokeThin, '6 4'); const shH=pts.map(p=> shadowOnH(p,L)); poly([...shH.map(q=>[sx(q.x), syH(-q.y)]), [sx(shH[0].x), syH(-shH[0].y)]], '#9aa', bw?null:'#0000', strokeThin, '6 4');
+    });
+
+    // ---- Segments (finite) ----
+    scene.segments.forEach(seg=>{
+      const a=scene.points.find(p=>p.id===seg.a), b=scene.points.find(p=>p.id===seg.b); if(!a||!b) return;
+      line(sx(a.x), syV(a.z), sx(b.x), syV(b.z), seg.color||'#66e0a3', strokeThick);
+      line(sx(a.x), syH(a.y), sx(b.x), syH(b.y), seg.color||'#66e0a3', strokeThick);
+    });
+
+    // ---- Lines (infinite visual) ----
+    function drawProjectedLine(p0,v, useV){ // returns draw in V or H across bbox
+      const x1=Xmin,x2=Xmax,y1=Ymin,y2=Ymax; // work in logical coords
+      // Param: P = p0 + t*v
+      // project to (x,z) or (x,y)
+      function proj(t){ if(useV) return {x:p0.x + t*v.x, y: p0.z + t*v.z}; else return {x:p0.x + t*v.x, y: p0.y + t*v.y}; }
+      // Find t where crosses each side
+      const ts=[];
+      // x = const
+      if(Math.abs(v.x)>1e-6){ ts.push((x1-p0.x)/v.x, (x2-p0.x)/v.x); }
+      // y = const
+      const vy = useV? v.z : v.y; const p0y = useV? p0.z : p0.y;
+      if(Math.abs(vy)>1e-6){ ts.push((y1-p0y)/vy, (y2-p0y)/vy); }
+      const pts=ts.map(t=>proj(t)).filter(P=> P.x>=x1-1e-6 && P.x<=x2+1e-6 && P.y>=y1-1e-6 && P.y<=y2+1e-6);
+      if(pts.length<2){ // fallback sample
+        const tA=-1000, tB=1000; const A=proj(tA), B=proj(tB); return useV? [sx(A.x), syV(A.y), sx(B.x), syV(B.y)] : [sx(A.x), syH(A.y), sx(B.x), syH(B.y)];
+      }
+      const A=pts[0], B=pts[pts.length-1]; return useV? [sx(A.x), syV(A.y), sx(B.x), syV(B.y)] : [sx(A.x), syH(B.y), sx(B.x), syH(A.y)];
+    }
+
+    scene.lines.forEach(L=>{
+      let p0,v; if(L.type==='two'){const A=scene.points.find(p=>p.id===L.a), B=scene.points.find(p=>p.id===L.b); if(!A||!B) return; p0=A; v={x:B.x-A.x,y:B.y-A.y,z:B.z-A.z};}
+      else {const A=scene.points.find(p=>p.id===L.p); if(!A) return; p0=A; v={x:L.vx,y:L.vy,z:L.vz};}
+      const [x1,y1,x2,y2]=drawProjectedLine(p0,v,true); line(x1,y1,x2,y2, L.color||'#ff99cc', strokeThick, '6 4');
+      const [xh1,yh1,xh2,yh2]=drawProjectedLine(p0,v,false); line(xh1,yh1,xh2,yh2, L.color||'#ff99cc', strokeThick, '6 4');
+    });
+
+    // ---- Planes: traces and semiplanes fill ----
+    function planeCoeffs(pl){ // returns {nx,ny,nz,d}
+      if(pl.type==='3pts'){
+        const A=scene.points.find(p=>p.id===pl.a), B=scene.points.find(p=>p.id===pl.b), C=scene.points.find(p=>p.id===pl.c); if(!A||!B||!C) return null;
+        const ux=B.x-A.x, uy=B.y-A.y, uz=B.z-A.z; const vx=C.x-A.x, vy=C.y-A.y, vz=C.z-A.z;
+        const nx= uy*vz - uz*vy, ny= uz*vx - ux*vz, nz= ux*vy - uy*vx; const d = -(nx*A.x + ny*A.y + nz*A.z); return {nx,ny,nz,d};
+      } else { const A=scene.points.find(p=>p.id===pl.p); if(!A) return null; const nx=pl.nx, ny=pl.ny, nz=pl.nz; const d=-(nx*A.x+ny*A.y+nz*A.z); return {nx,ny,nz,d}; }
+    }
+
+    function drawTraceV(coeffs,color){ // n_x x + n_z z + d = 0 (with y=0)
+      const {nx,ny,nz,d}=coeffs; const xL=sx(Xmin), xR=sx(Xmax);
+      if(Math.abs(nz)<1e-6){const x = -d/(nx||1e-6); line(sx(x), syV(Ymin), sx(x), syV(Ymax), color, strokeThick); return;}
+      const z1 = -(nx*Xmin + d)/nz, z2 = -(nx*Xmax + d)/nz; line(sx(Xmin), syV(z1), sx(Xmax), syV(z2), color, strokeThick);
+    }
+    function drawTraceH(coeffs,color){ // n_x x + n_y y + d = 0 (with z=0)
+      const {nx,ny,nz,d}=coeffs; if(Math.abs(ny)<1e-6){const x=-d/(nx||1e-6); line(sx(x), syH(Ymin), sx(x), syH(Ymax), color, strokeThick,'4 3'); return;}
+      const y1 = -(nx*Xmin + d)/ny, y2 = -(nx*Xmax + d)/ny; line(sx(Xmin), syH(y1), sx(Xmax), syH(y2), color, strokeThick,'4 3');
+    }
+
+    function halfplaneFillV(coeffs, sign, color, opacity){ // fill side on V
+      const rect=[[Xmin,Ymin],[Xmax,Ymin],[Xmax,Ymax],[Xmin,Ymax]]; const {nx,ny,nz,d}=coeffs; function inside(P){return sign*(nx*P[0] + nz*P[1] + d) >= 0}
+      function inter(P,Q){const a=nx*(Q[0]-P[0]) + nz*(Q[1]-P[1]); const t = a===0? 0.5 : -(nx*P[0]+nz*P[1]+d)/a; return [P[0]+t*(Q[0]-P[0]), P[1]+t*(Q[1]-P[1])]}
+      let polyPts=rect; for(let i=0;i<4;i++){const A=polyPts[i], B=polyPts[(i+1)%polyPts.length];}
+      // Sutherland–Hodgman
+      function clip(poly){const out=[]; for(let i=0;i<poly.length;i++){const P=poly[i], Q=poly[(i+1)%poly.length]; const inP=inside(P), inQ=inside(Q); if(inP && inQ){out.push(Q)} else if(inP && !inQ){out.push(inter(P,Q))} else if(!inP && inQ){out.push(inter(P,Q)); out.push(Q)}} return out}
+      let Pts = clip([[Xmin,Ymin],[Xmax,Ymin],[Xmax,Ymax],[Xmin,Ymax]]); if(Pts.length<3) return; const pts2 = Pts.map(p=>[sx(p[0]), syV(p[1])]); poly([...pts2, pts2[0]], color, color + '55', 1.0);
+    }
+    function halfplaneFillH(coeffs, sign, color, opacity){ const {nx,ny,nz,d}=coeffs; function inside(P){return sign*(nx*P[0] + ny*P[1] + d) >= 0}
+      function inter(P,Q){const a=nx*(Q[0]-P[0]) + ny*(Q[1]-P[1]); const t = a===0? 0.5 : -(nx*P[0]+ny*P[1]+d)/a; return [P[0]+t*(Q[0]-P[0]), P[1]+t*(Q[1]-P[1])]}
+      function clip(poly){const out=[]; for(let i=0;i<poly.length;i++){const P=poly[i], Q=poly[(i+1)%poly.length]; const inP=inside(P), inQ=inside(Q); if(inP && inQ){out.push(Q)} else if(inP && !inQ){out.push(inter(P,Q))} else if(!inP && inQ){out.push(inter(P,Q)); out.push(Q)}} return out}
+      let Pts = clip([[Xmin,Ymin],[Xmax,Ymin],[Xmax,Ymax],[Xmin,Ymax]]); if(Pts.length<3) return; const pts2 = Pts.map(p=>[sx(p[0]), syH(p[1])]); poly([...pts2, pts2[0]], color, color + '55', 1.0);
+    }
+
+    scene.planes.forEach(pl=>{const C=planeCoeffs(pl); if(!C) return; drawTraceV(C, pl.color||'#5ab3ff'); drawTraceH(C, pl.color||'#5ab3ff')});
+    scene.semiplanes.forEach(sp=>{const pl=scene.planes.find(p=>p.id===sp.plane); if(!pl) return; const C=planeCoeffs(pl); if(!C) return; const sign = (sp.side||'+')==='+'? 1 : -1; halfplaneFillV(C,sign, sp.color||'#ffaa00', sp.opacity??0.15); halfplaneFillH(C,sign, sp.color||'#ffaa00', sp.opacity??0.15)});
+
+    // Points last (on top)
+    scene.points.forEach(p=>{circle(sx(p.x), syV(p.z), (p.size||3), p.color||'#e6f'); circle(sx(p.x), syH(p.y), (p.size||3), p.color||'#e6f')});
+
+    // Titles
+    const NS2=NS; const tmp=document.createElementNS(NS2,'text');
+    const textEl1=document.createElementNS(NS2,'text'); textEl1.setAttribute('x',pad); textEl1.setAttribute('y',pad+4); textEl1.setAttribute('fill',bw?'#111':'#cfd8e3'); textEl1.textContent='Alçado (V)'; svg.appendChild(textEl1);
+    const textEl2=document.createElementNS(NS2,'text'); textEl2.setAttribute('x',pad); textEl2.setAttribute('y',H-pad-6); textEl2.setAttribute('fill',bw?'#111':'#cfd8e3'); textEl2.textContent='Planta (H)'; svg.appendChild(textEl2);
+  }
+
+  useEffect(draw,[scene, light, options]);
+  return <div className="svgwrap"><svg ref={svgRef}></svg></div>
+}
+
+// ------------- Main App ----------------
+function App(){
+  const [lang,setLang]=useState('pt'); const t=I18N[lang];
+  const [scene, setScene]=useState(()=>{ try{ if(location.hash.startsWith('#data=')){const payload=decodeURIComponent(location.hash.slice(6)); const json=LZString.decompressFromEncodedURIComponent(payload); if(json){return JSON.parse(json)}} }catch(e){}
+    return { points:[ {id:'A',x:0,y:4,z:4,color:'#ffd166',size:3}, {id:'B',x:6,y:4,z:4,color:'#ffd166',size:3}, {id:'V',x:4,y:12,z:4,color:'#ef476f',size:3} ],
+             segments:[{id:'s1',a:'A',b:'V',color:'#66e0a3',width:2},{id:'s2',a:'B',b:'V',color:'#66e0a3',width:2}],
+             faces:[{id:'f1',verts:['A','B','V'],color:'#5ab3ff',opacity:0.25}],
+             lines:[], planes:[], semiplanes:[] };
+  });
+  const [light,setLight]=useState({x:-1,y:-1,z:-1});
+  const [opts,setOpts]=useState({grid:true,axis:true,bw:false,thick:true});
+  const threeRef = useRef(null); useThree(threeRef, scene);
+  const [snaps, setSnaps]=useState([]);
+
+  const addPoint=p=> setScene(s=>({...s, points:[...s.points,p]}));
+  const addSeg=seg=> setScene(s=>({...s, segments:[...s.segments,seg]}));
+  const addFace=face=> setScene(s=>({...s, faces:[...s.faces,face]}));
+  const addLine=line=> setScene(s=>({...s, lines:[...s.lines,line]}));
+  const addPlane=pl=> setScene(s=>({...s, planes:[...s.planes,pl]}));
+  const addSemi=sp=> setScene(s=>({...s, semiplanes:[...s.semiplanes,sp]}));
+
+  // ---- Update/Delete helpers (with safe cascade) ----
+  const updatePoint=(id, patch)=> setScene(s=>({...s, points: s.points.map(p=> p.id===id? {...p, ...patch}: p)}));
+  const removePoint=(id)=> setScene(s=>{
+    const points = s.points.filter(p=>p.id!==id);
+    const segments = s.segments.filter(e=> e.a!==id && e.b!==id);
+    const lines = s.lines.filter(L=> (L.type==='two'? (L.a!==id && L.b!==id) : (L.p!==id)));
+    const faces = s.faces.filter(f=> !f.verts.includes(id));
+    const planes = s.planes.filter(pl=> pl.type==='3pts'? (pl.a!==id && pl.b!==id && pl.c!==id) : (pl.p!==id));
+    const planeIds = new Set(planes.map(p=>p.id));
+    const semiplanes = s.semiplanes.filter(sp=> planeIds.has(sp.plane));
+    return {...s, points, segments, lines, faces, planes, semiplanes};
+  });
+
+  const updateSeg=(id, patch)=> setScene(s=>({...s, segments: s.segments.map(e=> e.id===id? {...e, ...patch}: e)}));
+  const removeSeg=(id)=> setScene(s=> ({...s, segments: s.segments.filter(e=> e.id!==id)}));
+
+  const updateLine=(id, patch)=> setScene(s=>({...s, lines: s.lines.map(L=> L.id===id? {...L, ...patch}: L)}));
+  const removeLine=(id)=> setScene(s=> ({...s, lines: s.lines.filter(L=> L.id!==id)}));
+
+  const updatePlane=(id, patch)=> setScene(s=>({...s, planes: s.planes.map(p=> p.id===id? {...p, ...patch}: p)}));
+  const removePlane=(id)=> setScene(s=>{ const planes = s.planes.filter(p=>p.id!==id); const semiplanes = s.semiplanes.filter(sp=> sp.plane!==id); return {...s, planes, semiplanes}; });
+
+  const updateSemi=(id, patch)=> setScene(s=>({...s, semiplanes: s.semiplanes.map(x=> x.id===id? {...x, ...patch}: x)}));
+  const removeSemi=(id)=> setScene(s=> ({...s, semiplanes: s.semiplanes.filter(x=> x.id!==id)}));
+
+  const updateFace=(id, patch)=> setScene(s=>({...s, faces: s.faces.map(f=> f.id===id? {...f, ...patch}: f)}));
+  const removeFace=(id)=> setScene(s=> ({...s, faces: s.faces.filter(f=> f.id!==id)}));
+
+  const doSnap = ()=>{ const el=threeRef.current?.querySelector('canvas'); if(!el) return; const url=el.toDataURL('image/png'); setSnaps(ss=>[{url,include:true,id:uid()},...ss]) };
+
+  const shareLink=()=>{ const json=JSON.stringify(scene); const enc=LZString.compressToEncodedURIComponent(json); const url=location.origin+location.pathname+'#data='+enc; navigator.clipboard?.writeText(url); setShare(url) };
+  const [share,setShare]=useState('');
+
+  const exportPDF= async ()=>{ const { jsPDF } = window.jspdf; const pdf = new jsPDF({unit:'pt', format:'a4'});
+    const container=document.createElement('div'); container.style.width='1200px'; container.style.height='800px'; document.body.appendChild(container);
+    const tmp=ReactDOM.createRoot(container); tmp.render(<MongeSVG scene={scene} light={light} options={opts}/>); await new Promise(r=>setTimeout(r,300));
+    const svgEl=container.querySelector('svg'); const svgStr=new XMLSerializer().serializeToString(svgEl);
+    const svg64='data:image/svg+xml;base64,'+ btoa(unescape(encodeURIComponent(svgStr)));
+    const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight(); const margin=36; const w=pageW-2*margin; const h=w*(800/1200);
+    pdf.setFillColor(255,255,255); pdf.rect(0,0,pageW,pageH,'F'); pdf.addImage(svg64,'SVG',margin,margin,w,h);
+    pdf.setTextColor(30); pdf.setFontSize(10); pdf.text(`L=(${light.x.toFixed(2)},${light.y.toFixed(2)},${light.z.toFixed(2)})`, margin, margin+h+16);
+    const shots=snaps.filter(s=>s.include); if(shots.length){ pdf.addPage(); pdf.setFillColor(255,255,255); pdf.rect(0,0,pageW,pageH,'F'); pdf.setFontSize(14); pdf.text('3D Snapshots', margin, margin); let x=margin,y=margin+12,Ww=(w-20)/2,Hh=Ww*0.75; for(let i=0;i<shots.length;i++){ pdf.addImage(shots[i].url,'PNG',x,y,Ww,Hh); x+=Ww+20; if(x+Ww>pageW-margin){x=margin;y+=Hh+20;} } }
+    const blob=pdf.output('blob'); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monge-3d.pdf'; a.click(); URL.revokeObjectURL(a.href); tmp.unmount(); container.remove(); };
+
+  return (
+    <div className="app">
+      <div className="left">
+        <div className="row" style={{justifyContent:'space-between'}}>
+          <div className="pill">{t.app}</div>
+          <div className="row lang"><span className="small">{t.language}</span>
+            <select value={lang} onChange={e=>setLang(e.target.value)}>
+              <option value="en">English</option><option value="pt">Português</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option><option value="de">Deutsch</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Points */}
+        <div className="card">
+          <div className="row"><strong>{t.point}</strong></div>
+          <div className="row twoCol">
+            <input placeholder={t.id} id="pid" />
+            <input type="number" step="0.1" placeholder={t.x} id="px" />
+            <input type="number" step="0.1" placeholder={t.y} id="py" />
+            <input type="number" step="0.1" placeholder={t.z} id="pz" />
+            <input type="color" id="pc" defaultValue="#ffd166"/>
+            <input type="number" step="1" defaultValue={3} id="ps" title={t.size}/>
+            <button className="primary" onClick={()=>{ const p={id:document.getElementById('pid').value||uid(), x:parseFloat(document.getElementById('px').value||0), y:parseFloat(document.getElementById('py').value||0), z:parseFloat(document.getElementById('pz').value||0), color:document.getElementById('pc').value, size:parseInt(document.getElementById('ps').value||3)}; addPoint(p); }}>{t.addPoint}</button>
+          </div>
+          <div className="small">{scene.points.length} pts</div>
+          <div className="row" style={{display:'block'}}>
+            {scene.points.map(p=> (
+              <details key={p.id} style={{margin:'6px 0'}}>
+                <summary className="row" style={{gap:8}}><span className="pill">{p.id}</span><span className="small">({p.x.toFixed(2)},{p.y.toFixed(2)},{p.z.toFixed(2)})</span></summary>
+                <div className="row twoCol" style={{marginTop:6}}>
+                  <input id={`pt-id-${p.id}`} defaultValue={p.id} title="id"/>
+                  <input id={`pt-x-${p.id}`} type="number" step="0.1" defaultValue={p.x} title="x"/>
+                  <input id={`pt-y-${p.id}`} type="number" step="0.1" defaultValue={p.y} title="y"/>
+                  <input id={`pt-z-${p.id}`} type="number" step="0.1" defaultValue={p.z} title="z"/>
+                  <input id={`pt-c-${p.id}`} type="color" defaultValue={p.color||'#ffd166'} title="color"/>
+                  <input id={`pt-s-${p.id}`} type="number" step="1" defaultValue={p.size||3} title="size"/>
+                  <div className="row" style={{gap:6}}>
+                    <button onClick={()=>{
+                      const nid = document.getElementById(`pt-id-${p.id}`).value||p.id;
+                      const patch = {id:nid, x:parseFloat(document.getElementById(`pt-x-${p.id}`).value||p.x), y:parseFloat(document.getElementById(`pt-y-${p.id}`).value||p.y), z:parseFloat(document.getElementById(`pt-z-${p.id}`).value||p.z), color:document.getElementById(`pt-c-${p.id}`).value, size:parseInt(document.getElementById(`pt-s-${p.id}`).value||p.size||3)};
+                      // if id changed, update references
+                      if(nid!==p.id){
+                        setScene(s=>{
+                          const remapId=(v)=> v===p.id? nid: v;
+                          return {
+                            ...s,
+                            points: s.points.map(pp=> pp.id===p.id? {...pp, ...patch}: (pp.id===nid? {...pp, id:uid()}: pp)),
+                            segments: s.segments.map(e=> ({...e, a:remapId(e.a), b:remapId(e.b)})),
+                            lines: s.lines.map(L=> L.type==='two'? {...L, a:remapId(L.a), b:remapId(L.b)} : {...L, p:remapId(L.p)}),
+                            faces: s.faces.map(f=> ({...f, verts: f.verts.map(remapId)})),
+                            planes: s.planes.map(pl=> pl.type==='3pts'? {...pl, a:remapId(pl.a), b:remapId(pl.b), c:remapId(pl.c)} : {...pl, p:remapId(pl.p)}),
+                            // semiplanes unaffected (by plane id)
+                          }
+                        });
+                      } else {
+                        updatePoint(p.id, patch);
+                      }
+                    }}>Update</button>
+                    <button className="warn" onClick={()=>removePoint(p.id)}>✕</button>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* Segment */}
+        <div className="card">
+          <div className="row"><strong>{t.segment}</strong></div>
+          <div className="row">
+            <select id="sa">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <select id="sb">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <input type="color" id="sc" defaultValue="#66e0a3"/>
+            <input type="number" step="0.5" defaultValue={2} id="sw" title={t.width}/>
+            <button className="primary" onClick={()=>{ addSeg({id:uid(), a:document.getElementById('sa').value, b:document.getElementById('sb').value, color:document.getElementById('sc').value, width:parseFloat(document.getElementById('sw').value||2)}); }}>{t.addSegment}</button>
+          </div>
+          <div className="small">{scene.segments.length} segs</div>
+          <div className="row" style={{display:'block'}}>
+            {scene.segments.map(seg=> (
+              <details key={seg.id} style={{margin:'6px 0'}}>
+                <summary className="row" style={{gap:8}}><span className="pill">{seg.id}</span><span className="small">{seg.a}–{seg.b}</span></summary>
+                <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                  <select id={`sg-a-${seg.id}`} defaultValue={seg.a}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                  <select id={`sg-b-${seg.id}`} defaultValue={seg.b}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                  <input id={`sg-c-${seg.id}`} type="color" defaultValue={seg.color||'#66e0a3'}/>
+                  <input id={`sg-w-${seg.id}`} type="number" step="0.5" defaultValue={seg.width||2} title="width"/>
+                  <button onClick={()=> updateSeg(seg.id, {a:document.getElementById(`sg-a-${seg.id}`).value, b:document.getElementById(`sg-b-${seg.id}`).value, color:document.getElementById(`sg-c-${seg.id}`).value, width:parseFloat(document.getElementById(`sg-w-${seg.id}`).value||seg.width||2)})}>Update</button>
+                  <button className="warn" onClick={()=>removeSeg(seg.id)}>✕</button>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* Line */}
+        <div className="card">
+          <div className="row"><strong>{t.line}</strong></div>
+          <div className="row small muted">{t.byTwoPts}</div>
+          <div className="row">
+            <select id="la">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <select id="lb">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <input type="color" id="lc" defaultValue="#ff99cc"/>
+            <button className="primary" onClick={()=>{ addLine({id:uid(), type:'two', a:document.getElementById('la').value, b:document.getElementById('lb').value, color:document.getElementById('lc').value}); }}>{t.addLine}</button>
+          </div>
+          <div className="row small muted">{t.byPointDir}</div>
+          <div className="row">
+            <select id="lp">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <span>{t.dir}</span>
+            <input type="number" step="0.1" placeholder="dx" id="ldx" />
+            <input type="number" step="0.1" placeholder="dy" id="ldy" />
+            <input type="number" step="0.1" placeholder="dz" id="ldz" />
+            <input type="color" id="lc2" defaultValue="#ff99cc"/>
+            <button className="primary" onClick={()=>{ addLine({id:uid(), type:'dir', p:document.getElementById('lp').value, vx:parseFloat(document.getElementById('ldx').value||1), vy:parseFloat(document.getElementById('ldy').value||0), vz:parseFloat(document.getElementById('ldz').value||0), color:document.getElementById('lc2').value}); }}>{t.addLine}</button>
+          </div>
+          <div className="small">{scene.lines.length} lines</div>
+          <div className="row" style={{display:'block'}}>
+            {scene.lines.map(L=> (
+              <details key={L.id} style={{margin:'6px 0'}}>
+                <summary className="row" style={{gap:8}}><span className="pill">{L.id}</span><span className="small">{L.type==='two'? `${L.a}↔${L.b}` : `${L.p} + v`}</span></summary>
+                {L.type==='two'? (
+                  <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                    <select id={`ln-a-${L.id}`} defaultValue={L.a}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <select id={`ln-b-${L.id}`} defaultValue={L.b}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <input id={`ln-c-${L.id}`} type="color" defaultValue={L.color||'#ff99cc'}/>
+                    <button onClick={()=> updateLine(L.id, {a:document.getElementById(`ln-a-${L.id}`).value, b:document.getElementById(`ln-b-${L.id}`).value, color:document.getElementById(`ln-c-${L.id}`).value})}>Update</button>
+                    <button className="warn" onClick={()=>removeLine(L.id)}>✕</button>
+                  </div>
+                ):(
+                  <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                    <select id={`ln-p-${L.id}`} defaultValue={L.p}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <input id={`ln-vx-${L.id}`} type="number" step="0.1" defaultValue={L.vx||1} placeholder="vx"/>
+                    <input id={`ln-vy-${L.id}`} type="number" step="0.1" defaultValue={L.vy||0} placeholder="vy"/>
+                    <input id={`ln-vz-${L.id}`} type="number" step="0.1" defaultValue={L.vz||0} placeholder="vz"/>
+                    <input id={`ln-c2-${L.id}`} type="color" defaultValue={L.color||'#ff99cc'}/>
+                    <button onClick={()=> updateLine(L.id, {p:document.getElementById(`ln-p-${L.id}`).value, vx:parseFloat(document.getElementById(`ln-vx-${L.id}`).value||L.vx||1), vy:parseFloat(document.getElementById(`ln-vy-${L.id}`).value||L.vy||0), vz:parseFloat(document.getElementById(`ln-vz-${L.id}`).value||L.vz||0), color:document.getElementById(`ln-c2-${L.id}`).value})}>Update</button>
+                    <button className="warn" onClick={()=>removeLine(L.id)}>✕</button>
+                  </div>
+                )}
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* Plane */}
+        <div className="card">
+          <div className="row"><strong>{t.plane}</strong></div>
+          <div className="row small muted">{t.by3Pts}</div>
+          <div className="row">
+            <select id="pa">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <select id="pb">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <select id="pcp">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <input type="color" id="pcol" defaultValue="#5ab3ff"/>
+            <input type="number" step="0.05" defaultValue={0.25} id="pop" title="opacity"/>
+            <button className="primary" onClick={()=>{ addPlane({id:uid(), type:'3pts', a:document.getElementById('pa').value, b:document.getElementById('pb').value, c:document.getElementById('pcp').value, color:document.getElementById('pcol').value, opacity:parseFloat(document.getElementById('pop').value||0.25)}); }}>{t.addPlane}</button>
+          </div>
+          <div className="row small muted">{t.byPointNormal}</div>
+          <div className="row">
+            <select id="ppn">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <span>{t.normal}</span>
+            <input type="number" step="0.1" placeholder="nx" id="pnx" />
+            <input type="number" step="0.1" placeholder="ny" id="pny" />
+            <input type="number" step="0.1" placeholder="nz" id="pnz" />
+            <input type="color" id="pcol2" defaultValue="#5ab3ff"/>
+            <input type="number" step="0.05" defaultValue={0.25} id="pop2" title="opacity"/>
+            <button className="primary" onClick={()=>{ addPlane({id:uid(), type:'pn', p:document.getElementById('ppn').value, nx:parseFloat(document.getElementById('pnx').value||0), ny:parseFloat(document.getElementById('pny').value||1), nz:parseFloat(document.getElementById('pnz').value||0), color:document.getElementById('pcol2').value, opacity:parseFloat(document.getElementById('pop2').value||0.25)}); }}>{t.addPlane}</button>
+          </div>
+          <div className="small">{scene.planes.length} planes</div>
+          <div className="row" style={{display:'block'}}>
+            {scene.planes.map(pl=> (
+              <details key={pl.id} style={{margin:'6px 0'}}>
+                <summary className="row" style={{gap:8}}><span className="pill">{pl.id}</span><span className="small">{pl.type==='3pts'? `${pl.a},${pl.b},${pl.c}` : `${pl.p} ⟂ (${pl.nx},${pl.ny},${pl.nz})`}</span></summary>
+                {pl.type==='3pts'? (
+                  <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                    <select id={`pl-a-${pl.id}`} defaultValue={pl.a}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <select id={`pl-b-${pl.id}`} defaultValue={pl.b}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <select id={`pl-c-${pl.id}`} defaultValue={pl.c}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <input id={`pl-col-${pl.id}`} type="color" defaultValue={pl.color||'#5ab3ff'}/>
+                    <input id={`pl-op-${pl.id}`} type="number" step="0.05" defaultValue={pl.opacity??0.25} title="opacity"/>
+                    <button onClick={()=> updatePlane(pl.id, {a:document.getElementById(`pl-a-${pl.id}`).value, b:document.getElementById(`pl-b-${pl.id}`).value, c:document.getElementById(`pl-c-${pl.id}`).value, color:document.getElementById(`pl-col-${pl.id}`).value, opacity:parseFloat(document.getElementById(`pl-op-${pl.id}`).value||pl.opacity||0.25)})}>Update</button>
+                    <button className="warn" onClick={()=>removePlane(pl.id)}>✕</button>
+                  </div>
+                ):(
+                  <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                    <select id={`pl-p-${pl.id}`} defaultValue={pl.p}>{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                    <input id={`pl-nx-${pl.id}`} type="number" step="0.1" defaultValue={pl.nx||0} placeholder="nx"/>
+                    <input id={`pl-ny-${pl.id}`} type="number" step="0.1" defaultValue={pl.ny||1} placeholder="ny"/>
+                    <input id={`pl-nz-${pl.id}`} type="number" step="0.1" defaultValue={pl.nz||0} placeholder="nz"/>
+                    <input id={`pl-col2-${pl.id}`} type="color" defaultValue={pl.color||'#5ab3ff'}/>
+                    <input id={`pl-op2-${pl.id}`} type="number" step="0.05" defaultValue={pl.opacity??0.25} title="opacity"/>
+                    <button onClick={()=> updatePlane(pl.id, {p:document.getElementById(`pl-p-${pl.id}`).value, nx:parseFloat(document.getElementById(`pl-nx-${pl.id}`).value||pl.nx||0), ny:parseFloat(document.getElementById(`pl-ny-${pl.id}`).value||pl.ny||1), nz:parseFloat(document.getElementById(`pl-nz-${pl.id}`).value||pl.nz||0), color:document.getElementById(`pl-col2-${pl.id}`).value, opacity:parseFloat(document.getElementById(`pl-op2-${pl.id}`).value||pl.opacity||0.25)})}>Update</button>
+                    <button className="warn" onClick={()=>removePlane(pl.id)}>✕</button>
+                  </div>
+                )}
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* Semiplane */}
+        <div className="card">
+          <div className="row"><strong>{t.semiplane}</strong></div>
+          <div className="row">
+            <select id="sppl">{scene.planes.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <select id="spside"><option value="+">+</option><option value="-">-</option></select>
+            <input type="color" id="spc" defaultValue="#ffaa00"/>
+            <input type="number" step="0.05" defaultValue={0.15} id="spo" title="opacity"/>
+            <button className="primary" onClick={()=>{ addSemi({id:uid(), plane:document.getElementById('sppl').value, side:document.getElementById('spside').value, color:document.getElementById('spc').value, opacity:parseFloat(document.getElementById('spo').value||0.15)}); }}>{t.addSemiplane}</button>
+          </div>
+          <div className="small">{scene.semiplanes.length} semiplanes</div>
+          <div className="row" style={{display:'block'}}>
+            {scene.semiplanes.map(sp=> (
+              <details key={sp.id} style={{margin:'6px 0'}}>
+                <summary className="row" style={{gap:8}}><span className="pill">{sp.id}</span><span className="small">{sp.plane} {sp.side}</span></summary>
+                <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                  <select id={`sp-pl-${sp.id}`} defaultValue={sp.plane}>{scene.planes.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+                  <select id={`sp-si-${sp.id}`} defaultValue={sp.side}><option value="+">+</option><option value="-">-</option></select>
+                  <input id={`sp-co-${sp.id}`} type="color" defaultValue={sp.color||'#ffaa00'}/>
+                  <input id={`sp-op-${sp.id}`} type="number" step="0.05" defaultValue={sp.opacity??0.15} title="opacity"/>
+                  <button onClick={()=> updateSemi(sp.id, {plane:document.getElementById(`sp-pl-${sp.id}`).value, side:document.getElementById(`sp-si-${sp.id}`).value, color:document.getElementById(`sp-co-${sp.id}`).value, opacity:parseFloat(document.getElementById(`sp-op-${sp.id}`).value||sp.opacity||0.15)})}>Update</button>
+                  <button className="warn" onClick={()=>removeSemi(sp.id)}>✕</button>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* Faces manager */}
+        <div className="card">
+          <div className="row"><strong>{t.face}</strong></div>
+          <div className="row small muted">{t.addFace}</div>
+          <div className="row">
+            <input id="face-verts" placeholder={t.vertices} style={{flex:1}} />
+            <input id="face-col" type="color" defaultValue="#5ab3ff"/>
+            <input id="face-op" type="number" step="0.05" defaultValue={0.25} title="opacity"/>
+            <button className="primary" onClick={()=>{
+              const verts=(document.getElementById('face-verts').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+              if(verts.length>=3) addFace({id:uid(), verts, color:document.getElementById('face-col').value, opacity:parseFloat(document.getElementById('face-op').value||0.25)});
+            }}>{t.addFace}</button>
+          </div>
+          <div className="small">{scene.faces.length} faces</div>
+          <div className="row" style={{display:'block'}}>
+            {scene.faces.map(f=> (
+              <details key={f.id} style={{margin:'6px 0'}}>
+                <summary className="row" style={{gap:8}}><span className="pill">{f.id}</span><span className="small">[{f.verts.join(', ')}]</span></summary>
+                <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:6}}>
+                  <input id={`fc-v-${f.id}`} defaultValue={f.verts.join(', ')} style={{flex:1}}/>
+                  <input id={`fc-c-${f.id}`} type="color" defaultValue={f.color||'#5ab3ff'}/>
+                  <input id={`fc-o-${f.id}`} type="number" step="0.05" defaultValue={f.opacity??0.25} title="opacity"/>
+                  <button onClick={()=> updateFace(f.id, {verts:(document.getElementById(`fc-v-${f.id}`).value||'').split(',').map(s=>s.trim()).filter(Boolean), color:document.getElementById(`fc-c-${f.id}`).value, opacity:parseFloat(document.getElementById(`fc-o-${f.id}`).value||f.opacity||0.25)})}>Update</button>
+                  <button className="warn" onClick={()=>removeFace(f.id)}>✕</button>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+
+        {/* Light & Options */}
+        <div className="card">
+          <div className="row"><strong>{t.light}</strong></div>
+          <div className="row">
+            <label>{t.lx}</label><input type="number" step="0.1" value={light.x} onChange={e=>setLight({...light, x:parseFloat(e.target.value)})}/>
+            <label>{t.ly}</label><input type="number" step="0.1" value={light.y} onChange={e=>setLight({...light, y:parseFloat(e.target.value)})}/>
+            <label>{t.lz}</label><input type="number" step="0.1" value={light.z} onChange={e=>setLight({...light, z:parseFloat(e.target.value)})}/>
+            <button onClick={()=>setLight({x:-1,y:-1,z:-1})}>L=(-1,-1,-1)</button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="row"><strong>Options</strong></div>
+          <div className="row">
+            <label><input type="checkbox" checked={opts.grid} onChange={e=>setOpts({...opts,grid:e.target.checked})}/> {t.grid}</label>
+            <label><input type="checkbox" checked={opts.axis} onChange={e=>setOpts({...opts,axis:e.target.checked})}/> {t.axis}</label>
+            <label><input type="checkbox" checked={opts.bw} onChange={e=>setOpts({...opts,bw:e.target.checked})}/> {t.bw}</label>
+            <label><input type="checkbox" checked={opts.thick} onChange={e=>setOpts({...opts,thick:e.target.checked})}/> {t.thick}</label>
+          </div>
+        </div>
+
+        {/* Share & Export */}
+        <div className="card">
+          <div className="row" style={{gap:6,flexWrap:'wrap'}}>
+            <button className="good" onClick={exportPDF}>{t.exportPDF}</button>
+            <button onClick={doSnap}>{t.snap}</button>
+            <button onClick={shareLink}>{t.share}</button>
+            <button className="warn" onClick={()=>{location.hash=''; setScene({points:[],segments:[],faces:[],lines:[],planes:[],semiplanes:[]});}}> {t.clear} </button>
+          </div>
+          {share && <div className="row"><div className="linkbox">{share}</div></div>}
+        </div>
+
+        {/* Snapshots gallery */}
+        <div className="card">
+          <div className="row"><strong>3D {t.view3d} — {t.includeSnaps}</strong></div>
+          <div className="thumbs">{snaps.map(s=> (
+            <label key={s.id} style={{display:'inline-flex',flexDirection:'column',gap:4}}>
+              <img src={s.url}/>
+              <div className="row" style={{gap:6}}>
+                <input type="checkbox" checked={s.include} onChange={e=>setSnaps(snaps.map(ss=>ss.id===s.id?{...ss, include:e.target.checked}:ss))}/>
+                <button onClick={()=>setSnaps(snaps.filter(ss=>ss.id!==s.id))}>✕</button>
+              </div>
+            </label>
+          ))}</div>
+        </div>
+      </div>
+
+      <div className="right">
+        <div className="toolbar"><span className="pill">{t.monge}</span><span className="pill">{t.view3d}</span></div>
+        <div className="views">
+          <div className="card"><MongeSVG scene={scene} light={light} options={opts}/></div>
+          <div className="card" ref={threeRef} style={{position:'relative'}}>{/* three mounts here */}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
+
