@@ -140,12 +140,19 @@ function useThree(containerRef, sceneData){
   // Root group to flip only X in the 3D rendering
   const root = new THREE.Group(); root.scale.set(-1,1,1); scene.add(root);
   const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); grid.rotateX(Math.PI/2); root.add(grid);
+  // XY plane (z=0): semi-transparent green, large, beneath grid
+  const xyGeo = new THREE.PlaneGeometry(2000, 2000);
+  const xyMat = new THREE.MeshStandardMaterial({color:'#44ff44', transparent:true, opacity:0.15, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
+  const xyPlane = new THREE.Mesh(xyGeo, xyMat);
+  // Default PlaneGeometry is XY with normal +Z, so it's already at z=0
+  root.add(xyPlane);
   // XZ plane (y=0): semi-transparent red, very large to appear infinite
   const xzGeo = new THREE.PlaneGeometry(2000, 2000);
   const xzMat = new THREE.MeshStandardMaterial({color:'#ff4444', transparent:true, opacity:0.15, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
   const xzPlane = new THREE.Mesh(xzGeo, xzMat);
-  xzPlane.rotateX(-Math.PI/2); // XY -> XZ with normal +Y
+  xzPlane.rotateX(-Math.PI/2); // rotate XY into XZ with normal +Y
   root.add(xzPlane);
+  
     // Axis labels (X,Y,Z)
     function makeAxisLabel(text, color){
       const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d');
@@ -160,7 +167,7 @@ function useThree(containerRef, sceneData){
       spr.scale.set(1.6, 0.9, 1); // world units
       return spr;
     }
-  const ly=makeAxisLabel('Y', '#22cc66'); ly.position.set(0,7.2,0); root.add(ly);
+  // Axis labels removed per request
 
     // Points
     const sph = new THREE.SphereGeometry(0.12, 16, 16);
