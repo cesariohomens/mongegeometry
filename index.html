@@ -125,7 +125,7 @@ function shadowOnH(p,L){const t=p.z/(-L.z||-1e-6);return {x:p.x+t*L.x, y:(p.y+t*
 function shadowOnV(p,L){const t=p.y/(-L.y||-1e-6);return {x:p.x+t*L.x, y:p.z+t*L.z}}
 
 // ------------- 3D Scene (Three.js) ---------------
-function useThree(containerRef, sceneData, planeVis={xy:true,xz:true}){
+function useThree(containerRef, sceneData, planeVis={xy:true,xz:true}, gridUnits=5){
   useEffect(()=>{
     const el = containerRef.current; if(!el) return;
     const width = el.clientWidth, height = el.clientHeight;
@@ -139,7 +139,8 @@ function useThree(containerRef, sceneData, planeVis={xy:true,xz:true}){
     scene.add(new THREE.AmbientLight(0xffffff, .7)); const dl = new THREE.DirectionalLight(0xffffff,.7); dl.position.set(10,12,8); scene.add(dl);
   // Root group to flip only X in the 3D rendering
   const root = new THREE.Group(); root.scale.set(-1,1,1); scene.add(root);
-  const GRID_SIZE = 80, GRID_DIV = 80;
+  const UNITS = Math.max(1, Math.floor(gridUnits||5));
+  const GRID_SIZE = 2*UNITS, GRID_DIV = 2*UNITS;
   const grid = new THREE.GridHelper(GRID_SIZE, GRID_DIV, 0x303846, 0x1c232d); grid.rotateX(Math.PI/2); root.add(grid);
   // XY plane (z=0): semi-transparent green, large, beneath grid
   const xyGeo = new THREE.PlaneGeometry(GRID_SIZE, GRID_SIZE);
@@ -235,13 +236,13 @@ function useThree(containerRef, sceneData, planeVis={xy:true,xz:true}){
     const onResize=()=>{const w=el.clientWidth,h=el.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();};
     window.addEventListener('resize', onResize);
     return ()=>{cancelAnimationFrame(raf); window.removeEventListener('resize',onResize); el.innerHTML=""}
-  },[containerRef, JSON.stringify(sceneData), JSON.stringify(planeVis)]);
+  },[containerRef, JSON.stringify(sceneData), JSON.stringify(planeVis), gridUnits]);
 }
 
 // -------- Monge SVG renderer (inclui retas/planos/semiplanos) --------
 function MongeSVG({scene, light, options}){
   const svgRef = useRef(null);
-  const {grid=true, axis=true, bw=false, thick=false} = options||{};
+  const {grid=true, axis=true, bw=false, thick=false, units:optUnits=5} = options||{};
   const [view, setView] = React.useState({zoom:1, panX:0, panY:0});
   const [panning, setPanning] = React.useState(false);
   const lastPtRef = React.useRef({x:0,y:0});
@@ -250,7 +251,8 @@ function MongeSVG({scene, light, options}){
     const svg = svgRef.current; if(!svg) return; const W=svg.clientWidth||900,H=svg.clientHeight||640; const pad=30, midY=H/2;
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   // Symmetric logical extents (world units) and isotropic scaling
-  const Xmin=-40, Xmax=40, Ymin=-40, Ymax=40;
+  const UNITS = Math.max(1, Math.floor(optUnits||5));
+  const Xmin=-UNITS, Xmax=UNITS, Ymin=-UNITS, Ymax=UNITS;
   const XR = (Xmax - Xmin);
   const YEXT = Math.max(Math.abs(Ymin), Math.abs(Ymax)); // half-range
   const usableW = W - 2*pad;
@@ -460,7 +462,8 @@ function App(){
   const threeRef = useRef(null);
   const [showPlaneXY, setShowPlaneXY] = useState(true);
   const [showPlaneXZ, setShowPlaneXZ] = useState(true);
-  useThree(threeRef, scene, {xy:showPlaneXY, xz:showPlaneXZ});
+  const [gridUnits, setGridUnits] = useState(5);
+  useThree(threeRef, scene, {xy:showPlaneXY, xz:showPlaneXZ}, gridUnits);
   const [snaps, setSnaps]=useState([]);
 
   const addPoint=p=> setScene(s=>({...s, points:[...s.points,p]}));
@@ -505,7 +508,7 @@ function App(){
 
   const exportPDF= async ()=>{ const { jsPDF } = window.jspdf; const pdf = new jsPDF({unit:'pt', format:'a4'});
     const container=document.createElement('div'); container.style.width='1200px'; container.style.height='800px'; document.body.appendChild(container);
-    const tmp=ReactDOM.createRoot(container); tmp.render(<MongeSVG scene={scene} light={light} options={opts}/>); await new Promise(r=>setTimeout(r,300));
+    const tmp=ReactDOM.createRoot(container); tmp.render(<MongeSVG scene={scene} light={light} options={{...opts, units:gridUnits}}/>); await new Promise(r=>setTimeout(r,300));
     const svgEl=container.querySelector('svg'); const svgStr=new XMLSerializer().serializeToString(svgEl);
     const svg64='data:image/svg+xml;base64,'+ btoa(unescape(encodeURIComponent(svgStr)));
     const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight(); const margin=36; const w=pageW-2*margin; const h=w*(800/1200);
@@ -790,6 +793,11 @@ function App(){
             <label><input type="checkbox" checked={opts.thick} onChange={e=>setOpts({...opts,thick:e.target.checked})}/> {t.thick}</label>
           </div>
           <div className="row">
+            <label>Grid units</label>
+            <input type="number" min={1} step={1} value={gridUnits} onChange={e=>setGridUnits(Math.max(1, parseInt(e.target.value||'40',10)))} />
+            <span className="small muted">total squares: {2*gridUnits}×{2*gridUnits}</span>
+          </div>
+          <div className="row">
             <label><input type="checkbox" checked={showPlaneXY} onChange={e=>setShowPlaneXY(e.target.checked)}/> Plano X–Y (verde)</label>
             <label><input type="checkbox" checked={showPlaneXZ} onChange={e=>setShowPlaneXZ(e.target.checked)}/> Plano X–Z (vermelho)</label>
           </div>
@@ -824,7 +832,7 @@ function App(){
       <div className="right">
         <div className="toolbar"><span className="pill">{t.monge}</span><span className="pill">{t.view3d}</span></div>
         <div className="views">
-          <div className="card"><MongeSVG scene={scene} light={light} options={opts}/></div>
+          <div className="card"><MongeSVG scene={scene} light={light} options={{...opts, units:gridUnits}}/></div>
           <div className="card" ref={threeRef} style={{position:'relative'}}>{/* three mounts here */}</div>
         </div>
       </div>
