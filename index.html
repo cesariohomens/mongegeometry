@@ -125,7 +125,7 @@ function shadowOnH(p,L){const t=p.z/(-L.z||-1e-6);return {x:p.x+t*L.x, y:(p.y+t*
 function shadowOnV(p,L){const t=p.y/(-L.y||-1e-6);return {x:p.x+t*L.x, y:p.z+t*L.z}}
 
 // ------------- 3D Scene (Three.js) ---------------
-function useThree(containerRef, sceneData){
+function useThree(containerRef, sceneData, planeVis={xy:true,xz:true}){
   useEffect(()=>{
     const el = containerRef.current; if(!el) return;
     const width = el.clientWidth, height = el.clientHeight;
@@ -152,6 +152,9 @@ function useThree(containerRef, sceneData){
   const xzPlane = new THREE.Mesh(xzGeo, xzMat);
   xzPlane.rotateX(-Math.PI/2); // rotate XY into XZ with normal +Y
   root.add(xzPlane);
+  // Apply visibility from flags
+  xyPlane.visible = !!planeVis.xy;
+  xzPlane.visible = !!planeVis.xz;
   
     // Axis labels (X,Y,Z)
     function makeAxisLabel(text, color){
@@ -227,11 +230,11 @@ function useThree(containerRef, sceneData){
     sceneData.planes.forEach(pl=>{const base=planeFromDef(pl); if(!base) return; buildPatch(base, pl.color||'#5ab3ff', pl.opacity);});
     sceneData.semiplanes.forEach(sp=>{const pl=sceneData.planes.find(p=>p.id===sp.plane); const base=planeFromDef(pl); if(!base) return; buildPatch(base, sp.color||'#ffaa00', sp.opacity, true)});
 
-    let raf; const tick=()=>{controls.update(); renderer.render(scene,camera); raf=requestAnimationFrame(tick)}; tick();
+  let raf; const tick=()=>{controls.update(); renderer.render(scene,camera); raf=requestAnimationFrame(tick)}; tick();
     const onResize=()=>{const w=el.clientWidth,h=el.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();};
     window.addEventListener('resize', onResize);
     return ()=>{cancelAnimationFrame(raf); window.removeEventListener('resize',onResize); el.innerHTML=""}
-  },[containerRef, JSON.stringify(sceneData)]);
+  },[containerRef, JSON.stringify(sceneData), JSON.stringify(planeVis)]);
 }
 
 // -------- Monge SVG renderer (inclui retas/planos/semiplanos) --------
@@ -453,7 +456,10 @@ function App(){
   });
   const [light,setLight]=useState({x:-1,y:-1,z:-1});
   const [opts,setOpts]=useState({grid:true,axis:true,bw:false,thick:true});
-  const threeRef = useRef(null); useThree(threeRef, scene);
+  const threeRef = useRef(null);
+  const [showPlaneXY, setShowPlaneXY] = useState(true);
+  const [showPlaneXZ, setShowPlaneXZ] = useState(true);
+  useThree(threeRef, scene, {xy:showPlaneXY, xz:showPlaneXZ});
   const [snaps, setSnaps]=useState([]);
 
   const addPoint=p=> setScene(s=>({...s, points:[...s.points,p]}));
@@ -781,6 +787,10 @@ function App(){
             <label><input type="checkbox" checked={opts.axis} onChange={e=>setOpts({...opts,axis:e.target.checked})}/> {t.axis}</label>
             <label><input type="checkbox" checked={opts.bw} onChange={e=>setOpts({...opts,bw:e.target.checked})}/> {t.bw}</label>
             <label><input type="checkbox" checked={opts.thick} onChange={e=>setOpts({...opts,thick:e.target.checked})}/> {t.thick}</label>
+          </div>
+          <div className="row">
+            <label><input type="checkbox" checked={showPlaneXY} onChange={e=>setShowPlaneXY(e.target.checked)}/> Plano X–Y (verde)</label>
+            <label><input type="checkbox" checked={showPlaneXZ} onChange={e=>setShowPlaneXZ(e.target.checked)}/> Plano X–Z (vermelho)</label>
           </div>
         </div>
 
