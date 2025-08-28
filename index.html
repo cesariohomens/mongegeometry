@@ -263,14 +263,45 @@ function MongeSVG({scene, light, options}){
     function poly(points,color='#5af',fill=null,w=1.2,dash=null){const p=document.createElementNS(NS,'polyline');p.setAttribute('points',points.map(([x,y])=>`${x},${y}`).join(' '));p.setAttribute('stroke',col(color));p.setAttribute('fill',fill?(bw?'#ddd':fill):'none');p.setAttribute('stroke-width',w);if(dash)p.setAttribute('stroke-dasharray',dash);p.setAttribute('vector-effect','non-scaling-stroke');svg.appendChild(p)}
     function text(x,y,str,anchor='start'){const t=document.createElementNS(NS,'text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('fill',bw?'#111':'#cfd8e3');t.setAttribute('font-size','12');t.setAttribute('font-family','system-ui,Segoe UI,Roboto,Ubuntu,Arial');t.setAttribute('text-anchor',anchor);t.textContent=str;svg.appendChild(t)}
 
-    // Grid
+    // Grid that adapts to zoom/pan and fills the viewport
     if(grid){
-      for(let x=Math.ceil(Xmin);x<=Xmax;x++){const X=sx(x);line(X,ty(pad),X,ty(H-pad),'#1b222c',0.5)}
-      for(let y=Math.ceil(Ymin);y<=Ymax;y++){
-        const Yv=syV(y),Yh=syH(y);line(tx(pad),Yv,tx(W-pad),Yv,'#1b222c',0.5);line(tx(pad),Yh,tx(W-pad),Yh,'#1b222c',0.5)
+      // Inverse transforms to get visible world ranges
+      const invTx = Xs=> cx + (Xs - panX - cx)/zoom;
+      const invTy = Ys=> cy + (Ys - panY - cy)/zoom;
+      const worldXAt = Xs=> Xmin + (invTx(Xs) - xPad)/s;
+      const worldZAt = Ys=> (midY - invTy(Ys))/s; // for V
+      const worldYAt = Ys=> (invTy(Ys) - midY)/s; // for H
+      let wx0=worldXAt(0), wx1=worldXAt(W); if(wx0>wx1){const t=wx0;wx0=wx1;wx1=t}
+      let wz0=worldZAt(0), wz1=worldZAt(H); if(wz0>wz1){const t=wz0;wz0=wz1;wz1=t}
+      let wy0=worldYAt(0), wy1=worldYAt(H); if(wy0>wy1){const t=wy0;wy0=wy1;wy1=t}
+      // Clamp to a sane range to avoid too many lines
+      const clampRange = (a,b,min=-1000,max=1000)=>[Math.max(min,Math.floor(a)), Math.min(max,Math.ceil(b))];
+      const pxPerUnit = s * zoom;
+      const unitStep = Math.max(1, Math.ceil(12 / (pxPerUnit||1e-6))); // aim >=12px spacing
+      const majorStep = unitStep * 5;
+      const [XvMin, XvMax] = clampRange(wx0, wx1);
+      const [ZvMin, ZvMax] = clampRange(wz0, wz1);
+      const [YvMin, YvMax] = clampRange(wy0, wy1);
+      // Vertical lines (X)
+      const xStart = Math.ceil(XvMin / unitStep) * unitStep;
+      for(let x=xStart; x<=XvMax; x+=unitStep){
+        const isMajor = x%majorStep===0; const X = sx(x);
+        line(X, 0, X, H, isMajor?'#222a33':'#1b222c', isMajor?0.9:0.5);
+      }
+      // Horizontal lines for V (Z)
+      const zStart = Math.ceil(ZvMin / unitStep) * unitStep;
+      for(let z=zStart; z<=ZvMax; z+=unitStep){
+        const isMajor = z%majorStep===0; const Yv = syV(z);
+        line(0, Yv, W, Yv, isMajor?'#222a33':'#1b222c', isMajor?0.9:0.5);
+      }
+      // Horizontal lines for H (Y)
+      const yStart = Math.ceil(YvMin / unitStep) * unitStep;
+      for(let y=yStart; y<=YvMax; y+=unitStep){
+        const isMajor = y%majorStep===0; const Yh = syH(y);
+        line(0, Yh, W, Yh, isMajor?'#222a33':'#1b222c', isMajor?0.9:0.5);
       }
     }
-    if(axis){ const yFold=ty(midY); line(tx(pad),yFold,tx(W-pad),yFold,'#64748b',strokeThick); text(tx(pad),ty(midY-6),'x') }
+    if(axis){ const yFold=ty(midY); line(0,yFold,W,yFold,'#64748b',strokeThick); text(tx(pad),ty(midY-6),'x') }
 
     // Helper: draw infinite 2D line from ax+by+c=0 on a given rectangle
     function draw2DLine(ax,bx,cx,color,w){ // returns endpoints
