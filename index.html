@@ -227,6 +227,9 @@ function useThree(containerRef, sceneData){
 function MongeSVG({scene, light, options}){
   const svgRef = useRef(null);
   const {grid=true, axis=true, bw=false, thick=false} = options||{};
+  const [view, setView] = React.useState({zoom:1, panX:0, panY:0});
+  const [panning, setPanning] = React.useState(false);
+  const lastPtRef = React.useRef({x:0,y:0});
 
   const draw = ()=>{
     const svg = svgRef.current; if(!svg) return; const W=svg.clientWidth||900,H=svg.clientHeight||640; const pad=30, midY=H/2;
@@ -239,10 +242,19 @@ function MongeSVG({scene, light, options}){
   const usableHh = (H/2) - pad;
   const s = Math.min(usableW / XR, usableHh / YEXT); // pixels per unit
   const xPad = (W - s*XR) / 2; // center horizontally
-  const sx = x=> xPad + (x - Xmin) * s;
-  // Fold line is zero for both V (z) and H (y)
-  const syV = z=> midY - z * s;    // z up
-  const syH = y=> midY + y * s;    // y down
+  // Base mapping (before view transform)
+  const sxBase = x=> xPad + (x - Xmin) * s;
+  const syVBase = z=> midY - z * s;    // z up
+  const syHBase = y=> midY + y * s;    // y down
+  // Viewport transform (zoom/pan) around center (W/2, midY)
+  const cx = W/2, cy = midY;
+  const {zoom, panX, panY} = view;
+  const tx = x=> cx + (x - cx) * zoom + panX;
+  const ty = y=> cy + (y - cy) * zoom + panY;
+  // Final mapping with view transform applied
+  const sx = x=> tx(sxBase(x));
+  const syV = z=> ty(syVBase(z));
+  const syH = y=> ty(syHBase(y));
     const col = c=> bw? '#111': c; const strokeThin = thick?1.2:1.0, strokeThick = thick?2.2:1.2;
 
     const NS='http://www.w3.org/2000/svg';
@@ -253,10 +265,12 @@ function MongeSVG({scene, light, options}){
 
     // Grid
     if(grid){
-      for(let x=Math.ceil(Xmin);x<=Xmax;x++){const X=sx(x);line(X,pad,X,H-pad,'#1b222c',0.5)}
-      for(let y=Math.ceil(Ymin);y<=Ymax;y++){const Yv=syV(y),Yh=syH(y);line(pad,Yv,W-pad,Yv,'#1b222c',0.5);line(pad,Yh,W-pad,Yh,'#1b222c',0.5)}
+      for(let x=Math.ceil(Xmin);x<=Xmax;x++){const X=sx(x);line(X,ty(pad),X,ty(H-pad),'#1b222c',0.5)}
+      for(let y=Math.ceil(Ymin);y<=Ymax;y++){
+        const Yv=syV(y),Yh=syH(y);line(tx(pad),Yv,tx(W-pad),Yv,'#1b222c',0.5);line(tx(pad),Yh,tx(W-pad),Yh,'#1b222c',0.5)
+      }
     }
-    if(axis){line(pad,midY,W-pad,midY,'#64748b',strokeThick);text(pad,midY-6,'x')}
+    if(axis){ const yFold=ty(midY); line(tx(pad),yFold,tx(W-pad),yFold,'#64748b',strokeThick); text(tx(pad),ty(midY-6),'x') }
 
     // Helper: draw infinite 2D line from ax+by+c=0 on a given rectangle
     function draw2DLine(ax,bx,cx,color,w){ // returns endpoints
@@ -345,7 +359,7 @@ function MongeSVG({scene, light, options}){
     scene.semiplanes.forEach(sp=>{const pl=scene.planes.find(p=>p.id===sp.plane); if(!pl) return; const C=planeCoeffs(pl); if(!C) return; const sign = (sp.side||'+')==='+'? 1 : -1; halfplaneFillV(C,sign, sp.color||'#ffaa00', sp.opacity??0.15); halfplaneFillH(C,sign, sp.color||'#ffaa00', sp.opacity??0.15)});
 
     // Points last (on top)
-    scene.points.forEach(p=>{circle(sx(p.x), syV(p.z), (p.size||3), p.color||'#e6f'); circle(sx(p.x), syH(p.y), (p.size||3), p.color||'#e6f')});
+  scene.points.forEach(p=>{circle(sx(p.x), syV(p.z), (p.size||3), p.color||'#e6f'); circle(sx(p.x), syH(p.y), (p.size||3), p.color||'#e6f')});
 
     // Titles
     const NS2=NS; const tmp=document.createElementNS(NS2,'text');
@@ -353,8 +367,40 @@ function MongeSVG({scene, light, options}){
     const textEl2=document.createElementNS(NS2,'text'); textEl2.setAttribute('x',pad); textEl2.setAttribute('y',H-pad-6); textEl2.setAttribute('fill',bw?'#111':'#cfd8e3'); textEl2.textContent='Planta (H)'; svg.appendChild(textEl2);
   }
 
-  useEffect(draw,[scene, light, options]);
-  return <div className="svgwrap"><svg ref={svgRef}></svg></div>
+  useEffect(draw,[scene, light, options, view]);
+
+  // Interaction: zoom (wheel) and pan (drag)
+  const onWheel = (e)=>{
+    e.preventDefault(); const svg=svgRef.current; if(!svg) return;
+    const rect=svg.getBoundingClientRect(); const px=e.clientX-rect.left, py=e.clientY-rect.top;
+    const factor = Math.exp((-e.deltaY)*0.0015); // smooth zoom
+    const newZoom = Math.max(0.2, Math.min(10, view.zoom * factor));
+    const W=svg.clientWidth||900, H=svg.clientHeight||640; const cx=W/2, cy=H/2; const midY=H/2;
+    // We zoom around (px,py) using the same center cy=midY
+    const panX2 = px - cx - ((px - cx - view.panX)/view.zoom) * newZoom;
+    const panY2 = py - midY - ((py - midY - view.panY)/view.zoom) * newZoom;
+    setView(v=>({...v, zoom:newZoom, panX:panX2, panY:panY2}));
+  };
+  const onMouseDown = (e)=>{
+    e.preventDefault(); setPanning(true); lastPtRef.current={x:e.clientX, y:e.clientY};
+    const svg=svgRef.current; if(svg) svg.style.cursor='grabbing';
+  };
+  const onMouseMove = (e)=>{
+    if(!panning) return; const dx=e.clientX-lastPtRef.current.x, dy=e.clientY-lastPtRef.current.y; lastPtRef.current={x:e.clientX,y:e.clientY}; setView(v=>({...v, panX:v.panX+dx, panY:v.panY+dy}));
+  };
+  const endPan = ()=>{ setPanning(false); const svg=svgRef.current; if(svg) svg.style.cursor='default'; };
+  const onDoubleClick = ()=> setView({zoom:1, panX:0, panY:0});
+
+  return <div className="svgwrap">
+    <svg ref={svgRef}
+      onWheel={onWheel}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={endPan}
+      onMouseLeave={endPan}
+      onDoubleClick={onDoubleClick}
+      style={{cursor:panning?'grabbing':'grab'}}></svg>
+  </div>
 }
 
 // ------------- Main App ----------------
