@@ -118,10 +118,10 @@ function clone(obj){return JSON.parse(JSON.stringify(obj));}
 
 // Projection helpers (Monge)
 function projV(p){return {x:p.x, y:p.z}} // alçado (x,z)
-function projH(p){return {x:p.x, y:-p.y}} // planta (x,-y)
+function projH(p){return {x:p.x, y:p.y}} // planta (x,y) — true X–Y
 
 // Shadow of point along light L on H (z=0) and V (y=0)
-function shadowOnH(p,L){const t=p.z/(-L.z||-1e-6);return {x:p.x+t*L.x, y:-(p.y+t*L.y)}}
+function shadowOnH(p,L){const t=p.z/(-L.z||-1e-6);return {x:p.x+t*L.x, y:(p.y+t*L.y)}}
 function shadowOnV(p,L){const t=p.y/(-L.y||-1e-6);return {x:p.x+t*L.x, y:p.z+t*L.z}}
 
 // ------------- 3D Scene (Three.js) ---------------
@@ -298,7 +298,7 @@ function MongeSVG({scene, light, options}){
       if(pts.length<2){ // fallback sample
         const tA=-1000, tB=1000; const A=proj(tA), B=proj(tB); return useV? [sx(A.x), syV(A.y), sx(B.x), syV(B.y)] : [sx(A.x), syH(A.y), sx(B.x), syH(B.y)];
       }
-      const A=pts[0], B=pts[pts.length-1]; return useV? [sx(A.x), syV(A.y), sx(B.x), syV(B.y)] : [sx(A.x), syH(B.y), sx(B.x), syH(A.y)];
+  const A=pts[0], B=pts[pts.length-1]; return useV? [sx(A.x), syV(A.y), sx(B.x), syV(B.y)] : [sx(A.x), syH(A.y), sx(B.x), syH(B.y)];
     }
 
     scene.lines.forEach(L=>{
