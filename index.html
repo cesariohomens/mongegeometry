@@ -134,7 +134,7 @@ function useThree(containerRef, sceneData){
     el.innerHTML = ""; el.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0d11);
-  const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000); camera.up.set(0,0,1); camera.position.set(12,10,14);
+  const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000); camera.up.set(0,0,1); camera.position.set(-12,10,14);
     const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0,0,0); camera.lookAt(0,0,0);
     scene.add(new THREE.AmbientLight(0xffffff, .7)); const dl = new THREE.DirectionalLight(0xffffff,.7); dl.position.set(10,12,8); scene.add(dl);
   // Root group to flip only X in the 3D rendering
