@@ -135,9 +135,11 @@ function useThree(containerRef, sceneData){
 
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0d11);
   const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000); camera.up.set(0,0,1); camera.position.set(12,10,14);
-    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0,0,0); camera.lookAt(0,0,0);
     scene.add(new THREE.AmbientLight(0xffffff, .7)); const dl = new THREE.DirectionalLight(0xffffff,.7); dl.position.set(10,12,8); scene.add(dl);
-  const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); grid.rotateX(Math.PI/2); scene.add(grid); scene.add(new THREE.AxesHelper(6));
+  // Root group to flip only X in the 3D rendering
+  const root = new THREE.Group(); root.scale.set(-1,1,1); scene.add(root);
+  const grid = new THREE.GridHelper(80, 80, 0x303846, 0x1c232d); grid.rotateX(Math.PI/2); root.add(grid); root.add(new THREE.AxesHelper(6));
     // Axis labels (X,Y,Z)
     function makeAxisLabel(text, color){
       const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d');
@@ -152,21 +154,21 @@ function useThree(containerRef, sceneData){
       spr.scale.set(1.6, 0.9, 1); // world units
       return spr;
     }
-    const lx=makeAxisLabel('X', '#ff5555'); lx.position.set(7.2,0,0); scene.add(lx);
-    const ly=makeAxisLabel('Y', '#22cc66'); ly.position.set(0,7.2,0); scene.add(ly);
-    const lz=makeAxisLabel('Z', '#55aaff'); lz.position.set(0,0,7.2); scene.add(lz);
+  const lx=makeAxisLabel('X', '#ff5555'); lx.position.set(7.2,0,0); root.add(lx);
+  const ly=makeAxisLabel('Y', '#22cc66'); ly.position.set(0,7.2,0); root.add(ly);
+  const lz=makeAxisLabel('Z', '#55aaff'); lz.position.set(0,0,7.2); root.add(lz);
 
     // Points
     const sph = new THREE.SphereGeometry(0.12, 16, 16);
-    sceneData.points.forEach(pt=>{const m=new THREE.MeshStandardMaterial({color:pt.color||'#88ccff'});const s=new THREE.Mesh(sph,m);s.position.set(pt.x,pt.y,pt.z);scene.add(s)});
+  sceneData.points.forEach(pt=>{const m=new THREE.MeshStandardMaterial({color:pt.color||'#88ccff', side:THREE.DoubleSide});const s=new THREE.Mesh(sph,m);s.position.set(pt.x,pt.y,pt.z);root.add(s)});
 
     // Segments
-    sceneData.segments.forEach(seg=>{const a=sceneData.points.find(p=>p.id===seg.a), b=sceneData.points.find(p=>p.id===seg.b); if(!a||!b) return; const mat=new THREE.LineBasicMaterial({color:seg.color||'#66e0a3'}); const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x,a.y,a.z),new THREE.Vector3(b.x,b.y,b.z)]); scene.add(new THREE.Line(geo,mat));});
+  sceneData.segments.forEach(seg=>{const a=sceneData.points.find(p=>p.id===seg.a), b=sceneData.points.find(p=>p.id===seg.b); if(!a||!b) return; const mat=new THREE.LineBasicMaterial({color:seg.color||'#66e0a3'}); const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x,a.y,a.z),new THREE.Vector3(b.x,b.y,b.z)]); root.add(new THREE.Line(geo,mat));});
 
     // Lines (infinite visual as long segment)
     sceneData.lines.forEach(L=>{let p0,v; if(L.type==='two'){const a=sceneData.points.find(p=>p.id===L.a), b=sceneData.points.find(p=>p.id===L.b); if(!a||!b) return; p0=a; v={x:b.x-a.x,y:b.y-a.y,z:b.z-a.z};} else {const a=sceneData.points.find(p=>p.id===L.p); if(!a) return; p0=a; v={x:L.vx,y:L.vy,z:L.vz};}
       const S=100; const A=new THREE.Vector3(p0.x-S*v.x,p0.y-S*v.y,p0.z-S*v.z), B=new THREE.Vector3(p0.x+S*v.x,p0.y+S*v.y,p0.z+S*v.z);
-      const mat=new THREE.LineDashedMaterial({color:L.color||'#f6c', dashSize:2, gapSize:1}); const geo=new THREE.BufferGeometry().setFromPoints([A,B]); const line=new THREE.Line(geo,mat); line.computeLineDistances(); scene.add(line);
+  const mat=new THREE.LineDashedMaterial({color:L.color||'#f6c', dashSize:2, gapSize:1}); const geo=new THREE.BufferGeometry().setFromPoints([A,B]); const line=new THREE.Line(geo,mat); line.computeLineDistances(); root.add(line);
     });
 
     // Planes & semiplanes (patch)
@@ -206,8 +208,8 @@ function useThree(containerRef, sceneData){
         geo.setAttribute('position', new THREE.Float32BufferAttribute(coords,3));
         geo.computeVertexNormals();
         const mat=new THREE.MeshStandardMaterial({color, opacity:(opacity??0.25), transparent:true, side:THREE.DoubleSide});
-        const mesh=new THREE.Mesh(geo,mat);
-        scene.add(mesh);
+  const mesh=new THREE.Mesh(geo,mat);
+  root.add(mesh);
       }
     }
 
