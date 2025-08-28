@@ -301,7 +301,7 @@ function MongeSVG({scene, light, options}){
         line(0, Yh, W, Yh, isMajor?'#222a33':'#1b222c', isMajor?0.9:0.5);
       }
     }
-    if(axis){ const yFold=ty(midY); line(0,yFold,W,yFold,'#64748b',strokeThick); text(tx(pad),ty(midY-6),'x') }
+  if(axis){ const yFold=ty(midY); line(0,yFold,W,yFold,'#64748b',strokeThick); text(6, yFold-6, 'x') }
 
     // Helper: draw infinite 2D line from ax+by+c=0 on a given rectangle
     function draw2DLine(ax,bx,cx,color,w){ // returns endpoints
