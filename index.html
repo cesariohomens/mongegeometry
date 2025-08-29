@@ -653,6 +653,38 @@ function App(){
             <input type="color" id="lc2" defaultValue="#ff99cc"/>
             <button className="primary" onClick={()=>{ addLine({id:uid(), type:'dir', p:document.getElementById('lp').value, vx:parseFloat(document.getElementById('ldx').value||1), vy:parseFloat(document.getElementById('ldy').value||0), vz:parseFloat(document.getElementById('ldz').value||0), color:document.getElementById('lc2').value}); }}>{t.addLine}</button>
           </div>
+          <div className="row small muted">Por projeção horizontal (X–Y) + ângulo de elevação</div>
+          <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            <select id="lhp-p">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <label>∠H</label><input id="lhp-az" type="number" step="1" defaultValue={0} title="Ângulo no plano X–Y (graus)"/>
+            <label>elevação</label><input id="lhp-el" type="number" step="1" defaultValue={0} title="Ângulo acima de X–Y (graus)"/>
+            <input id="lhp-col" type="color" defaultValue="#ff99cc"/>
+            <button className="primary" onClick={()=>{
+              const pid=document.getElementById('lhp-p').value; const P=scene.points.find(p=>p.id===pid); if(!P) return;
+              const az = (parseFloat(document.getElementById('lhp-az').value||0) * Math.PI)/180;
+              const el = (parseFloat(document.getElementById('lhp-el').value||0) * Math.PI)/180;
+              const vx = Math.cos(az) * Math.cos(el);
+              const vy = Math.sin(az) * Math.cos(el);
+              const vz = Math.sin(el);
+              addLine({id:uid(), type:'dir', p:pid, vx, vy, vz, color:document.getElementById('lhp-col').value});
+            }}>Adicionar</button>
+          </div>
+          <div className="row small muted">Por projeção frontal (X–Z) + ângulo lateral</div>
+          <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            <select id="lfp-p">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <label>∠V</label><input id="lfp-az" type="number" step="1" defaultValue={0} title="Ângulo no plano X–Z (graus)"/>
+            <label>inclinação Y</label><input id="lfp-tilt" type="number" step="1" defaultValue={0} title="Ângulo face a X–Z para +Y (graus)"/>
+            <input id="lfp-col" type="color" defaultValue="#ff99cc"/>
+            <button className="primary" onClick={()=>{
+              const pid=document.getElementById('lfp-p').value; const P=scene.points.find(p=>p.id===pid); if(!P) return;
+              const az = (parseFloat(document.getElementById('lfp-az').value||0) * Math.PI)/180;
+              const tilt = (parseFloat(document.getElementById('lfp-tilt').value||0) * Math.PI)/180;
+              const vx = Math.cos(az) * Math.cos(tilt);
+              const vy = Math.sin(tilt);
+              const vz = Math.sin(az) * Math.cos(tilt);
+              addLine({id:uid(), type:'dir', p:pid, vx, vy, vz, color:document.getElementById('lfp-col').value});
+            }}>Adicionar</button>
+          </div>
           <div className="small">{scene.lines.length} lines</div>
           <div className="row" style={{display:'block'}}>
             {scene.lines.map(L=> (
