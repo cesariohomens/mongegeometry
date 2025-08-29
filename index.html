@@ -188,7 +188,24 @@ function useThree(containerRef, sceneData, planeVis={xy:true,xz:true}, gridUnits
     });
 
     // Planes & semiplanes (patch)
-    function planeFromDef(pl){ if(pl.type==='3pts'){const A=sceneData.points.find(p=>p.id===pl.a),B=sceneData.points.find(p=>p.id===pl.b),C=sceneData.points.find(p=>p.id===pl.c); if(!A||!B||!C) return null; const u=new THREE.Vector3(B.x-A.x,B.y-A.y,B.z-A.z); const v=new THREE.Vector3(C.x-A.x,C.y-A.y,C.z-A.z); const n=new THREE.Vector3().crossVectors(u,v).normalize(); return {p:new THREE.Vector3(A.x,A.y,A.z), n}; } else {const A=sceneData.points.find(p=>p.id===pl.p); if(!A) return null; const n=new THREE.Vector3(pl.nx,pl.ny,pl.nz).normalize(); return {p:new THREE.Vector3(A.x,A.y,A.z), n}; } }
+    function planeFromDef(pl){
+      if(pl.type==='3pts'){
+        const A=sceneData.points.find(p=>p.id===pl.a),B=sceneData.points.find(p=>p.id===pl.b),C=sceneData.points.find(p=>p.id===pl.c);
+        if(!A||!B||!C) return null;
+        const u=new THREE.Vector3(B.x-A.x,B.y-A.y,B.z-A.z);
+        const v=new THREE.Vector3(C.x-A.x,C.y-A.y,C.z-A.z);
+        const n=new THREE.Vector3().crossVectors(u,v).normalize();
+        return {p:new THREE.Vector3(A.x,A.y,A.z), n};
+      } else if(pl.type==='pn'){
+        const A=sceneData.points.find(p=>p.id===pl.p); if(!A) return null;
+        const n=new THREE.Vector3(pl.nx,pl.ny,pl.nz).normalize();
+        return {p:new THREE.Vector3(A.x,A.y,A.z), n};
+      } else if(pl.type==='pn0'){
+        const n=new THREE.Vector3(pl.nx,pl.ny,pl.nz).normalize();
+        return {p:new THREE.Vector3(pl.px,pl.py,pl.pz), n};
+      }
+      return null;
+    }
     function buildPatch(base, color, opacity, half=false){
       if(!base) return;
       const n=base.n;
@@ -376,7 +393,12 @@ function MongeSVG({scene, light, options}){
         const A=scene.points.find(p=>p.id===pl.a), B=scene.points.find(p=>p.id===pl.b), C=scene.points.find(p=>p.id===pl.c); if(!A||!B||!C) return null;
         const ux=B.x-A.x, uy=B.y-A.y, uz=B.z-A.z; const vx=C.x-A.x, vy=C.y-A.y, vz=C.z-A.z;
         const nx= uy*vz - uz*vy, ny= uz*vx - ux*vz, nz= ux*vy - uy*vx; const d = -(nx*A.x + ny*A.y + nz*A.z); return {nx,ny,nz,d};
-      } else { const A=scene.points.find(p=>p.id===pl.p); if(!A) return null; const nx=pl.nx, ny=pl.ny, nz=pl.nz; const d=-(nx*A.x+ny*A.y+nz*A.z); return {nx,ny,nz,d}; }
+      } else if(pl.type==='pn') {
+        const A=scene.points.find(p=>p.id===pl.p); if(!A) return null; const nx=pl.nx, ny=pl.ny, nz=pl.nz; const d=-(nx*A.x+ny*A.y+nz*A.z); return {nx,ny,nz,d};
+      } else if(pl.type==='pn0') {
+        const nx=pl.nx, ny=pl.ny, nz=pl.nz; const d=-(nx*pl.px+ny*pl.py+nz*pl.pz); return {nx,ny,nz,d};
+      }
+      return null;
     }
 
     function drawTraceV(coeffs,color){ // n_x x + n_z z + d = 0 (with y=0)
@@ -683,6 +705,55 @@ function App(){
             <input type="number" step="0.05" defaultValue={0.25} id="pop2" title="opacity"/>
             <button className="primary" onClick={()=>{ addPlane({id:uid(), type:'pn', p:document.getElementById('ppn').value, nx:parseFloat(document.getElementById('pnx').value||0), ny:parseFloat(document.getElementById('pny').value||1), nz:parseFloat(document.getElementById('pnz').value||0), color:document.getElementById('pcol2').value, opacity:parseFloat(document.getElementById('pop2').value||0.25)}); }}>{t.addPlane}</button>
           </div>
+          <div className="row small muted">Por traços (interseções) em V (X–Z) e H (X–Y)</div>
+          <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            <label>x₀</label><input id="pltr-xf" type="number" step="0.1" defaultValue={0} title="X no eixo (interseção com a charneira)"/>
+            <label>∠H</label><input id="pltr-ah" type="number" step="1" defaultValue={30} title="Inclinação no plano X–Y (graus)"/>
+            <label>∠V</label><input id="pltr-av" type="number" step="1" defaultValue={30} title="Inclinação no plano X–Z (graus)"/>
+            <input id="pltr-col" type="color" defaultValue="#5ab3ff"/>
+            <input id="pltr-op" type="number" step="0.05" defaultValue={0.25} title="opacity"/>
+            <button className="primary" onClick={()=>{
+              const xf = parseFloat(document.getElementById('pltr-xf').value||0);
+              const ah = (parseFloat(document.getElementById('pltr-ah').value||0) * Math.PI) / 180;
+              const av = (parseFloat(document.getElementById('pltr-av').value||0) * Math.PI) / 180;
+              const tH = {x: Math.cos(ah), y: Math.sin(ah), z: 0};
+              const tV = {x: Math.cos(av), y: 0, z: Math.sin(av)};
+              const nx = tH.y*tV.z - tH.z*tV.y;
+              const ny = tH.z*tV.x - tH.x*tV.z;
+              const nz = tH.x*tV.y - tH.y*tV.x;
+              const len = Math.hypot(nx,ny,nz);
+              if(!(len>1e-6)) { alert('Traços degenerados: escolha ângulos válidos.'); return; }
+              addPlane({id:uid(), type:'pn0', px:xf, py:0, pz:0, nx:nx/len, ny:ny/len, nz:nz/len, color:document.getElementById('pltr-col').value, opacity:parseFloat(document.getElementById('pltr-op').value||0.25)});
+            }}>Adicionar (Traços)</button>
+          </div>
+
+          <div className="row small muted">Por Reta + Ponto</div>
+          <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            <select id="pllp-line">{scene.lines.map(L=> <option key={L.id} value={L.id}>{L.id}</option>)}</select>
+            <select id="pllp-point">{scene.points.map(p=> <option key={p.id} value={p.id}>{p.id}</option>)}</select>
+            <input id="pllp-col" type="color" defaultValue="#5ab3ff"/>
+            <input id="pllp-op" type="number" step="0.05" defaultValue={0.25} title="opacity"/>
+            <button className="primary" onClick={()=>{
+              const lid = document.getElementById('pllp-line').value; const pid = document.getElementById('pllp-point').value;
+              const L = scene.lines.find(l=>l.id===lid); const P = scene.points.find(p=>p.id===pid);
+              if(!L||!P) return;
+              let p0, v;
+              if(L.type==='two'){
+                const A=scene.points.find(p=>p.id===L.a), B=scene.points.find(p=>p.id===L.b); if(!A||!B) { alert('Reta inválida.'); return; }
+                p0={x:A.x,y:A.y,z:A.z}; v={x:B.x-A.x,y:B.y-A.y,z:B.z-A.z};
+              } else {
+                const A=scene.points.find(p=>p.id===L.p); if(!A) { alert('Reta inválida.'); return; }
+                p0={x:A.x,y:A.y,z:A.z}; v={x:L.vx,y:L.vy,z:L.vz};
+              }
+              const w={x:P.x-p0.x, y:P.y-p0.y, z:P.z-p0.z};
+              const nx = v.y*w.z - v.z*w.y;
+              const ny = v.z*w.x - v.x*w.z;
+              const nz = v.x*w.y - v.y*w.x;
+              const len=Math.hypot(nx,ny,nz);
+              if(!(len>1e-6)) { alert('Ponto alinhado com a reta. Escolha um ponto fora da reta.'); return; }
+              addPlane({id:uid(), type:'pn0', px:P.x, py:P.y, pz:P.z, nx:nx/len, ny:ny/len, nz:nz/len, color:document.getElementById('pllp-col').value, opacity:parseFloat(document.getElementById('pllp-op').value||0.25)});
+            }}>Adicionar (Reta + Ponto)</button>
+          </div>
           <div className="small">{scene.planes.length} planes</div>
           <div className="row" style={{display:'block'}}>
             {scene.planes.map(pl=> (
@@ -712,6 +783,41 @@ function App(){
                 )}
               </details>
             ))}
+          </div>
+          <div className="row small muted">Por duas retas</div>
+          <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            <select id="plll-a">{scene.lines.map(L=> <option key={L.id} value={L.id}>{L.id}</option>)}</select>
+            <select id="plll-b">{scene.lines.map(L=> <option key={L.id} value={L.id}>{L.id}</option>)}</select>
+            <input id="plll-col" type="color" defaultValue="#5ab3ff"/>
+            <input id="plll-op" type="number" step="0.05" defaultValue={0.25} title="opacity"/>
+            <button className="primary" onClick={()=>{
+              function getLine(l){
+                if(l.type==='two'){
+                  const A=scene.points.find(p=>p.id===l.a), B=scene.points.find(p=>p.id===l.b); if(!A||!B) return null; return {p:{x:A.x,y:A.y,z:A.z}, v:{x:B.x-A.x,y:B.y-A.y,z:B.z-A.z}};
+                } else { const A=scene.points.find(p=>p.id===l.p); if(!A) return null; return {p:{x:A.x,y:A.y,z:A.z}, v:{x:l.vx,y:l.vy,z:l.vz}}; }
+              }
+              const La = scene.lines.find(l=>l.id===document.getElementById('plll-a').value);
+              const Lb = scene.lines.find(l=>l.id===document.getElementById('plll-b').value);
+              if(!La||!Lb) return;
+              const A=getLine(La), B=getLine(Lb); if(!A||!B) { alert('Reta inválida.'); return; }
+              const cross = (a,b)=>({x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x});
+              const sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
+              const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
+              const nDir = cross(A.v, B.v); const nlen=Math.hypot(nDir.x,nDir.y,nDir.z);
+              const w = sub(B.p, A.p);
+              if(nlen < 1e-8){
+                // Parallel directions: plane normal as v × (B.p - A.p)
+                const n2 = cross(A.v, w); const n2len=Math.hypot(n2.x,n2.y,n2.z);
+                if(!(n2len>1e-8)) { alert('Retas coincidentes: o plano não é único.'); return; }
+                addPlane({id:uid(), type:'pn0', px:A.p.x, py:A.p.y, pz:A.p.z, nx:n2.x/n2len, ny:n2.y/n2len, nz:n2.z/n2len, color:document.getElementById('plll-col').value, opacity:parseFloat(document.getElementById('plll-op').value||0.25)});
+                return;
+              }
+              // Coplanarity test: (B.p - A.p) · (A.v × B.v) == 0
+              const triple = dot(w, nDir);
+              if(Math.abs(triple) > 1e-6){ alert('Retas reversas (não coplanares).'); return; }
+              // Coplanar, non-parallel: use normal = cross(vA,vB), point A.p
+              addPlane({id:uid(), type:'pn0', px:A.p.x, py:A.p.y, pz:A.p.z, nx:nDir.x/nlen, ny:nDir.y/nlen, nz:nDir.z/nlen, color:document.getElementById('plll-col').value, opacity:parseFloat(document.getElementById('plll-op').value||0.25)});
+            }}>Adicionar (2 Retas)</button>
           </div>
         </div>
 
